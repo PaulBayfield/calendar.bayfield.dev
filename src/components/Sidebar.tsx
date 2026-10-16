@@ -45,22 +45,25 @@ export function Sidebar(props: Props) {
         <LinkIcon />
         <span>{t("schedule")}</span>
       </button>
-      <CalendarGroup
-        title={t("myCalendars")}
-        calendars={mine}
-        hidden={hidden}
-        onToggle={onToggle}
-        onReorder={(ids) => props.onReorder([...ids, ...others.map((c) => c.id)])}
-      />
-      {others.length > 0 && (
+      {/* Only the calendar list scrolls; the header, mini calendar and Planifier stay put. */}
+      <div className="sidebar-scroll">
         <CalendarGroup
-          title={t("otherCalendars")}
-          calendars={others}
+          title={t("myCalendars")}
+          calendars={mine}
           hidden={hidden}
           onToggle={onToggle}
-          onReorder={(ids) => props.onReorder([...mine.map((c) => c.id), ...ids])}
+          onReorder={(ids) => props.onReorder([...ids, ...others.map((c) => c.id)])}
         />
-      )}
+        {others.length > 0 && (
+          <CalendarGroup
+            title={t("otherCalendars")}
+            calendars={others}
+            hidden={hidden}
+            onToggle={onToggle}
+            onReorder={(ids) => props.onReorder([...mine.map((c) => c.id), ...ids])}
+          />
+        )}
+      </div>
     </aside>
   );
 }
@@ -78,7 +81,11 @@ function MiniMonth({ rangeStart, rangeEnd, today, onPickDate }: Props) {
     <div className="mini-month">
       <div className="mini-month-head">
         <span className="mini-month-title">{f.monthYear(month)}</span>
-        <button className="icon-button small" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
+        <button
+          className="icon-button small"
+          aria-label="Previous month"
+          onClick={() => setMonth(addMonths(month, -1))}
+        >
           <ChevronUp />
         </button>
         <button className="icon-button small" aria-label="Next month" onClick={() => setMonth(addMonths(month, 1))}>

@@ -518,7 +518,22 @@ textarea:disabled {
   padding: 0 8px 12px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+.sidebar > :not(.sidebar-scroll) {
+  flex: none;
+}
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* Room for the scrollbar without shifting the rows, and a fade where the list is cut off. */
+  margin: -12px -8px 0;
+  padding: 12px 8px;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
 }
 .sidebar-top {
   margin: 0 -8px;
