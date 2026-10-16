@@ -10,6 +10,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { Hono, type Context, type Next } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
+import { secureHeaders } from "hono/secure-headers";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -53,6 +55,13 @@ const CORS_ORIGINS = new Set(
     .map((o) => o.trim())
     .concat(PUBLIC_URL),
 );
+
+/**
+ * Header your reverse proxy puts the visitor's IP in (e.g. "cf-connecting-ip" behind a Cloudflare
+ * Tunnel, or "x-forwarded-for"). Unset: the TCP peer address. Only set it when the port isn't
+ * reachable except through that proxy, or the header can be forged.
+ */
+const CLIENT_IP_HEADER = process.env.CLIENT_IP_HEADER?.toLowerCase();
 
 const MIN_NOTICE_MS = 15 * 60_000;
 const store = openStore(DATA_DIR);
@@ -117,7 +126,8 @@ async function requireOwner(c: Context, next: Next) {
   if (!cached || cached < Date.now()) {
     const info = await tokenInfo(token);
     const client = info?.azp ?? info?.aud ?? "";
-    if (!info || info.email?.toLowerCase() !== OWNER_EMAIL || !ALLOWED_CLIENTS.has(client)) {
+    const verified = info?.email_verified === "true" || info?.email_verified === true;
+    if (!info || !verified || info.email?.toLowerCase() !== OWNER_EMAIL || !ALLOWED_CLIENTS.has(client)) {
       return c.json({ error: "This Google account isn't the server's owner" }, 403);
     }
     if (verifiedTokens.size > 100) verifiedTokens.clear();
@@ -126,17 +136,28 @@ async function requireOwner(c: Context, next: Next) {
   await next();
 }
 
-const bookAttempts = new Map<string, number[]>();
-function rateLimited(ip: string, limit = 10, windowMs = 60 * 60_000): boolean {
+const hits = new Map<string, number[]>();
+/** Sliding-window limit per `key` (bucket + client IP). */
+function rateLimited(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
-  const recent = (bookAttempts.get(ip) ?? []).filter((t) => t > now - windowMs);
+  const recent = (hits.get(key) ?? []).filter((t) => t > now - windowMs);
   recent.push(now);
-  bookAttempts.set(ip, recent);
+  hits.set(key, recent);
+  if (hits.size > 10_000) {
+    // Forget clients that have gone quiet, so the map can't grow forever.
+    for (const [k, times] of hits) if (times[times.length - 1] < now - 60 * 60_000) hits.delete(k);
+  }
   return recent.length > limit;
 }
 
 function clientIp(c: Context): string {
-  return c.req.header("x-forwarded-for")?.split(",")[0].trim() || getConnInfo(c).remote.address || "unknown";
+  if (CLIENT_IP_HEADER) {
+    const value = c.req.header(CLIENT_IP_HEADER);
+    // X-Forwarded-For: the proxy appends the address it saw, so only the last entry is trustworthy.
+    const ip = value?.split(",").at(-1)?.trim();
+    if (ip) return ip;
+  }
+  return getConnInfo(c).remote.address ?? "unknown";
 }
 
 /** One booking at a time per link, so two people can't grab the same slot. */
@@ -174,6 +195,17 @@ app.onError((err, c) => {
   console.error(err);
   return c.json({ error: err instanceof GoogleError ? err.message : "Internal error" }, 500);
 });
+
+app.use(
+  "*",
+  secureHeaders({
+    // Google sign-in returns through a popup that has to reach back to this window.
+    crossOriginOpenerPolicy: "same-origin-allow-popups",
+    // Keep the origin in Referer: referrer-restricted Google Maps keys need it.
+    referrerPolicy: "strict-origin-when-cross-origin",
+  }),
+);
+app.use("/api/*", bodyLimit({ maxSize: 64 * 1024, onError: (c) => c.json({ error: "Request too large" }, 413) }));
 
 app.use(
   "/api/*",
@@ -276,6 +308,7 @@ app.delete("/api/links/:id", requireOwner, (c) => {
 // Public
 
 app.get("/api/public/links/:id", async (c) => {
+  if (rateLimited(`view:${clientIp(c)}`, 60, 10 * 60_000)) return c.json({ error: "Too many requests, try again later" }, 429);
   const link = store.getLink(c.req.param("id"));
   if (!link) return c.json({ error: "Not found" }, 404);
   const booked = link.singleUse && store.bookingsFor(link.id).length > 0;
@@ -290,7 +323,7 @@ app.get("/api/public/links/:id", async (c) => {
 });
 
 app.post("/api/public/links/:id/book", async (c) => {
-  if (rateLimited(clientIp(c))) return c.json({ error: "Too many attempts, try again later" }, 429);
+  if (rateLimited(`book:${clientIp(c)}`, 10, 60 * 60_000)) return c.json({ error: "Too many attempts, try again later" }, 429);
   const link = store.getLink(c.req.param("id"));
   if (!link) return c.json({ error: "Not found" }, 404);
 

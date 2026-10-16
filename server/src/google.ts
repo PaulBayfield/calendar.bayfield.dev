@@ -67,6 +67,7 @@ export const refreshAccessToken = (cfg: OAuthConfig, refreshToken: string) =>
 
 export interface TokenInfo {
   email?: string;
+  email_verified?: string | boolean;
   azp?: string;
   aud?: string;
   expires_in?: string;
