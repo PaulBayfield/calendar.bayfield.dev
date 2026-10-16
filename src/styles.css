@@ -415,6 +415,10 @@ textarea:disabled {
   gap: 12px;
   justify-items: center;
 }
+.signin-logo {
+  width: 72px;
+  height: 72px;
+}
 .signin-card h1 {
   font-size: 24px;
 }
@@ -903,7 +907,6 @@ textarea:disabled {
   line-height: 1.3;
   background: color-mix(in srgb, var(--c) var(--event-tint), var(--bg));
   color: color-mix(in srgb, var(--c) var(--event-text), var(--text));
-  box-shadow: 0 0 0 1px var(--bg);
   cursor: default;
   outline: none;
 }

@@ -132,6 +132,7 @@ function SignIn({ error, onSignIn }: { error: string | null; onSignIn: () => Pro
         </div>
       )}
       <div className="signin-card">
+        <img className="signin-logo" src="/favicon.svg" alt="" />
         <h1>Calendar</h1>
         <p className="muted">{t("signinHint")}</p>
         <button

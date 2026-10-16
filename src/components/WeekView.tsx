@@ -47,7 +47,8 @@ interface Props {
 }
 
 type Drag =
-  | { kind: "create"; anchor: Date; current: Date; moved: boolean; x: number; y: number; hadSelection: boolean }
+  /** `anchor`: start of the slot pressed. `floor`/`ceil`: edges of the slot under the pointer now. */
+  | { kind: "create"; anchor: Date; floor: Date; ceil: Date; moved: boolean; x: number; y: number; hadSelection: boolean }
   | { kind: "move"; ev: CalEvent; group: CalEvent[]; offsetMs: number; start: Date; end: Date; moved: boolean; x: number; y: number; additive: boolean }
   /** Dragging the top (`start`) or bottom (`end`) edge of an event. */
   | { kind: "resize"; edge: "start" | "end"; ev: CalEvent; start: Date; end: Date; moved: boolean; x: number; y: number; additive: boolean }
@@ -169,8 +170,7 @@ export function WeekView(props: Props) {
         setDrag({ kind: "move", ev, group: [ev], offsetMs, start: ev.start, end: ev.end, moved: false, x, y, additive: false });
       } else {
         navigator.vibrate?.(10);
-        const current = addMinutes(anchor, settings.defaultDuration);
-        setDrag({ kind: "create", anchor, current, moved: true, x, y, hadSelection: false });
+        setDrag({ kind: "create", anchor, floor: anchor, ceil: addMinutes(anchor, settings.defaultDuration), moved: true, x, y, hadSelection: false });
       }
     }, LONG_PRESS_MS);
   };
@@ -183,7 +183,8 @@ export function WeekView(props: Props) {
     setDrag({
       kind: "create",
       anchor,
-      current: anchor,
+      floor: anchor,
+      ceil: addMinutes(anchor, SNAP),
       moved: false,
       x: e.clientX,
       y: e.clientY,
@@ -226,7 +227,13 @@ export function WeekView(props: Props) {
     }
     const moved = drag.moved || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > DRAG_THRESHOLD;
     if (drag.kind === "create") {
-      setDrag({ ...drag, moved, current: timeAt(e.clientX, e.clientY) });
+      const { day, minute } = pointAt(e.clientX, e.clientY);
+      setDrag({
+        ...drag,
+        moved,
+        floor: atMinute(days[day], Math.floor(minute / SNAP) * SNAP),
+        ceil: atMinute(days[day], Math.ceil(minute / SNAP) * SNAP),
+      });
     } else if (drag.kind === "move") {
       const { day, minute } = pointAt(e.clientX, e.clientY);
       // Offset from where the event was grabbed, in absolute time, so multi-day events can
@@ -266,10 +273,9 @@ export function WeekView(props: Props) {
     }
     if (drag.kind === "create") {
       if (!drag.moved && drag.hadSelection) return p.onSelect(null);
-      const [a, b] = drag.current < drag.anchor ? [drag.current, drag.anchor] : [drag.anchor, drag.current];
-      const end = drag.moved ? (b > a ? b : addMinutes(a, SNAP)) : addMinutes(a, settings.defaultDuration);
-      if (scheduling) p.onAddSlot({ start: a, end });
-      else p.onCreate(a, end, false);
+      const range = drag.moved ? createRange(drag) : { start: drag.anchor, end: addMinutes(drag.anchor, settings.defaultDuration) };
+      if (scheduling) p.onAddSlot(range);
+      else p.onCreate(range.start, range.end, false);
     } else if (!drag.moved) {
       p.onSelect(drag.ev, drag.additive);
     } else if (drag.start.getTime() !== drag.ev.start.getTime() || drag.end.getTime() !== drag.ev.end.getTime()) {
@@ -287,12 +293,7 @@ export function WeekView(props: Props) {
     }
     return events.map((e) => (e.key === drag.ev.key ? { ...e, start: drag.start, end: drag.end } : e));
   }, [events, drag]);
-  const ghost =
-    drag?.kind === "create" && drag.moved
-      ? drag.current < drag.anchor
-        ? { start: drag.current, end: drag.anchor }
-        : { start: drag.anchor, end: drag.current > drag.anchor ? drag.current : addMinutes(drag.anchor, SNAP) }
-      : null;
+  const ghost = drag?.kind === "create" && drag.moved ? createRange(drag) : null;
 
   // The drag preview may span several days: draw the slice that falls on each one.
   const ghostSegment = (day: Date) => {
@@ -433,8 +434,9 @@ export function WeekView(props: Props) {
                       style={
                         {
                           "--c": ev.color,
-                          top: (startMin / 60) * HOUR_HEIGHT + 1,
-                          height: height - 2,
+                          // Exactly on the time lines, with a 1px gap below to separate back-to-back events.
+                          top: (startMin / 60) * HOUR_HEIGHT,
+                          height: height - 1,
                           left: `calc(${(col / cols) * 100}% + 1px)`,
                           width: `calc(${100 / cols}% - 4px)`,
                         } as CSSProperties
@@ -503,6 +505,17 @@ export function shiftEvent(ev: CalEvent, deltaMs: number): CalEvent {
     return { ...ev, start, end };
   }
   return { ...ev, start: new Date(ev.start.getTime() + deltaMs), end: new Date(ev.end.getTime() + deltaMs) };
+}
+
+/**
+ * What a create-drag covers: every 15-minute slot from the one pressed to the one under the
+ * pointer, both included, whichever direction the drag goes.
+ */
+function createRange(drag: { anchor: Date; floor: Date; ceil: Date }): { start: Date; end: Date } {
+  const anchorEnd = addMinutes(drag.anchor, SNAP);
+  return drag.floor < drag.anchor
+    ? { start: drag.floor, end: anchorEnd }
+    : { start: drag.anchor, end: drag.ceil > anchorEnd ? drag.ceil : anchorEnd };
 }
 
 /** Position of the part of [start, end) that falls on `day`, or null if none does. */
