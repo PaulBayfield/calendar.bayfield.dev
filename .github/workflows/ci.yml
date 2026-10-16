@@ -42,6 +42,8 @@ jobs:
 
   desktop:
     runs-on: ubuntu-latest
+    # Slow (full Rust build), so it's opt-in: set the repository variable DESKTOP_CI to "true".
+    if: vars.DESKTOP_CI == 'true'
     steps:
       - uses: actions/checkout@v7
 

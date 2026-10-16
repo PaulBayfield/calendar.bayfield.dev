@@ -127,8 +127,12 @@ async function requireOwner(c: Context, next: Next) {
     const info = await tokenInfo(token);
     const client = info?.azp ?? info?.aud ?? "";
     const verified = info?.email_verified === "true" || info?.email_verified === true;
-    if (!info || !verified || info.email?.toLowerCase() !== OWNER_EMAIL || !ALLOWED_CLIENTS.has(client)) {
+    if (!info || !verified || info.email?.toLowerCase() !== OWNER_EMAIL) {
       return c.json({ error: "This Google account isn't the server's owner" }, 403);
+    }
+    if (!ALLOWED_CLIENTS.has(client)) {
+      console.warn(`Owner token from unknown OAuth client ${client}; add it to GOOGLE_DESKTOP_CLIENT_ID`);
+      return c.json({ error: "This app's Google client isn't allowed by the server (check GOOGLE_DESKTOP_CLIENT_ID)" }, 403);
     }
     if (verifiedTokens.size > 100) verifiedTokens.clear();
     verifiedTokens.set(token, Date.now() + Number(info.expires_in ?? 0) * 1000);
