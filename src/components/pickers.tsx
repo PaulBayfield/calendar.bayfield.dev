@@ -180,9 +180,14 @@ interface TimePickerProps {
   disabled?: boolean;
   /** For an end time on the same day: only list later times, labelled with their duration. */
   after?: string;
+  /** Apply a typed time after a short pause, without waiting for Enter (default true). */
+  live?: boolean;
 }
 
-export function TimePicker({ value, onChange, disabled, after }: TimePickerProps) {
+/** Pause after typing before a typed time is applied. */
+const LIVE_DELAY_MS = 500;
+
+export function TimePicker({ value, onChange, disabled, after, live = true }: TimePickerProps) {
   const { f } = useSettings();
   const anchor = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -192,22 +197,51 @@ export function TimePicker({ value, onChange, disabled, after }: TimePickerProps
   // On touch screens, pick from the list instead of popping up the keyboard.
   const touch = useMediaQuery("(pointer: coarse)");
 
-  useEffect(() => setText(label(value)), [value, f]); // eslint-disable-line react-hooks/exhaustive-deps
+  const focused = useRef(false);
+  const liveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Show the current value in the middle of the list when it opens.
-  useLayoutEffect(() => {
-    if (open) listRef.current?.querySelector(".selected, .nearest")?.scrollIntoView({ block: "center" });
-  }, [open]);
+  // Follow outside changes, but never rewrite what the user is in the middle of typing.
+  useEffect(() => {
+    if (!focused.current) setText(label(value));
+  }, [value, f]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => clearTimeout(liveTimer.current), []);
 
   const from = after ? toMinutes(after) + 15 : 0;
   const options = Array.from({ length: 96 }, (_, i) => i * 15).filter((m) => m >= from);
-  const current = toMinutes(value);
+  // While typing, the list follows the typed time ("18" highlights 18:00).
+  const typed = parseTime(text);
+  const current = toMinutes(typed ?? value);
   const nearest = options.find((m) => m >= current);
 
-  const commit = () => {
-    const parsed = parseTime(text);
+  // Keep the highlighted time in the middle of the list.
+  useLayoutEffect(() => {
+    if (open) listRef.current?.querySelector(".selected, .nearest")?.scrollIntoView({ block: "center" });
+  }, [open, current]);
+
+  const apply = (input: string) => {
+    const parsed = parseTime(input);
     if (parsed && parsed !== value) onChange(parsed);
-    else setText(label(value));
+    return parsed;
+  };
+
+  /** A time clicked in the list wins over whatever was typed. */
+  const picked = useRef<string | null>(null);
+
+  const commit = () => {
+    clearTimeout(liveTimer.current);
+    focused.current = false;
+    if (picked.current) {
+      setText(label(picked.current));
+      picked.current = null;
+      return;
+    }
+    setText(label(apply(text) ?? value));
+  };
+
+  const type = (next: string) => {
+    setText(next);
+    clearTimeout(liveTimer.current);
+    if (live) liveTimer.current = setTimeout(() => apply(next), LIVE_DELAY_MS);
   };
 
   return (
@@ -220,8 +254,9 @@ export function TimePicker({ value, onChange, disabled, after }: TimePickerProps
         inputMode={touch ? "none" : undefined}
         value={text}
         disabled={disabled}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => type(e.target.value)}
         onFocus={(e) => {
+          focused.current = true;
           e.target.select();
           setOpen(true);
         }}
@@ -249,6 +284,7 @@ export function TimePicker({ value, onChange, disabled, after }: TimePickerProps
                   // Keep focus in the input so its blur doesn't commit stale text first.
                   onPointerDown={(e) => e.preventDefault()}
                   onClick={() => {
+                    picked.current = hhmm;
                     onChange(hhmm);
                     setOpen(false);
                     anchor.current?.blur();

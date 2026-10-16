@@ -283,12 +283,14 @@ export function EventPanel({
               {!form.allDay && (
                 <div className="when-line">
                   <TimePicker
+                    live={!isRecurring}
                     value={form.startTime}
                     disabled={!editable}
                     onChange={(time) => changeStart(form.startDate, time)}
                   />
                   <span className="when-arrow">→</span>
                   <TimePicker
+                    live={!isRecurring}
                     value={form.endTime}
                     disabled={!editable}
                     after={form.endDate === form.startDate ? form.startTime : undefined}
