@@ -1,0 +1,117 @@
+html,
+body,
+#root {
+  overflow: auto;
+}
+
+.book {
+  min-height: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 48px 16px;
+  background: var(--bg-sidebar);
+}
+.book-card {
+  width: min(560px, 100%);
+  align-self: flex-start;
+  padding: 28px;
+  border-radius: 14px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.book-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.book-header h1 {
+  font-size: 24px;
+}
+.book-pick {
+  font-size: 16px;
+  margin-top: 4px;
+}
+.book-days {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.book-day-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.book-day-title::first-letter,
+.book-chosen::first-letter {
+  text-transform: uppercase;
+}
+.book-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.book-slot {
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  font-weight: 500;
+}
+.book-slot:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.book-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.book-form input,
+.book-form textarea {
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  outline: none;
+  resize: vertical;
+}
+.book-form input:focus,
+.book-form textarea:focus {
+  border-color: var(--primary);
+}
+.book-chosen {
+  margin: 0;
+  font-weight: 600;
+}
+.book-actions {
+  display: flex;
+  justify-content: space-between;
+}
+.book-done h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+.book-done p {
+  margin: 4px 0;
+}
+.book-done a {
+  color: var(--primary);
+  word-break: break-all;
+}
+
+@media (max-width: 600px) {
+  .book {
+    padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+  }
+  .book-card {
+    padding: 20px 16px;
+  }
+  .book-form input,
+  .book-form textarea {
+    font-size: 16px;
+  }
+}
