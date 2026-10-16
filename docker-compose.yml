@@ -1,0 +1,18 @@
+services:
+  calendar:
+    build:
+      context: .
+      args:
+        VITE_GOOGLE_WEB_CLIENT_ID: ${VITE_GOOGLE_WEB_CLIENT_ID}
+        VITE_GOOGLE_MAPS_API_KEY: ${VITE_GOOGLE_MAPS_API_KEY:-}
+    env_file: server/.env
+    environment:
+      DATA_DIR: /data
+    ports:
+      - "8787:8787"
+    volumes:
+      - calendar-data:/data
+    restart: unless-stopped
+
+volumes:
+  calendar-data:
