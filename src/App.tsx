@@ -59,6 +59,8 @@ function inversePatch(before: CalEvent, patch: EventInput): EventInput {
   if ("location" in patch) inverse.location = e.location ?? "";
   if ("colorId" in patch) inverse.colorId = e.colorId ?? null;
   if ("transparency" in patch) inverse.transparency = e.transparency ?? "opaque";
+  if ("reminders" in patch)
+    inverse.reminders = e.reminders?.useDefault === false ? { useDefault: false, overrides: e.reminders.overrides ?? [] } : { useDefault: true, overrides: [] };
   if ("visibility" in patch) inverse.visibility = e.visibility === "public" || e.visibility === "private" ? e.visibility : "default";
   if ("attendees" in patch) inverse.attendees = e.attendees ?? [];
   return inverse;

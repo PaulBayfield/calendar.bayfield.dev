@@ -11,6 +11,7 @@ import {
   type CalEvent,
   type Calendar,
   type EventInput,
+  type Reminders as RemindersValue,
 } from "../lib/google";
 import { addDays, fromDateAndTime, toDateOnly, toTimeOnly } from "../lib/dates";
 import { openExternal } from "../lib/open";
@@ -19,9 +20,10 @@ import type { StringKey } from "../lib/i18n";
 import { PanelHeader } from "./PanelHeader";
 import { DatePicker, formatDuration, TimePicker } from "./pickers";
 import { Autocomplete } from "./Autocomplete";
+import { Reminders } from "./Reminders";
 import { suggestContacts } from "../lib/contacts";
 import { endPlaceSession, rememberPlace, suggestPlaces } from "../lib/places";
-import { AlignLeft, Clock, External, MapPin, Repeat, Trash, User, Video, X, PanelRight, PopOut, Lock } from "./icons";
+import { AlignLeft, Bell, Clock, External, MapPin, Repeat, Trash, User, Video, X, PanelRight, PopOut, Lock } from "./icons";
 
 const RECURRENCE: { value: string; label: StringKey }[] = [
   { value: "", label: "recNone" },
@@ -115,6 +117,9 @@ export function EventPanel({
   const [form, setForm] = useState(() => formFrom(ev));
   const [attendees, setAttendees] = useState<Attendee[]>(ev.event.attendees ?? []);
   const [guest, setGuest] = useState("");
+  // Drafts keep their own; saved events read the (optimistically updated) event.
+  const [draftReminders, setDraftReminders] = useState<RemindersValue>({ useDefault: true });
+  const reminders = isDraft ? draftReminders : (ev.event.reminders ?? { useDefault: true });
   const titleRef = useRef<HTMLInputElement>(null);
   const editable = isDraft || canEdit(ev);
   const writable = calendars.filter(isWritable);
@@ -125,6 +130,7 @@ export function EventPanel({
     setForm(formFrom(ev));
     setAttendees(ev.event.attendees ?? []);
     setGuest("");
+    setDraftReminders({ useDefault: true });
     if (isDraft) setTimeout(() => titleRef.current?.focus());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ev.key]);
@@ -205,6 +211,7 @@ export function EventPanel({
       visibility: form.visibility,
       attendees: attendees.length ? attendees : undefined,
       recurrence: form.recurrence ? [form.recurrence] : undefined,
+      reminders: draftReminders.useDefault ? undefined : draftReminders,
       conferenceData: form.meet ? meetRequest() : undefined,
     });
   };
@@ -346,6 +353,16 @@ export function EventPanel({
                   {isRecurring ? t("recurringInstance") : t("recNone")}
                 </span>
               )}
+            </Row>
+          )}
+          {(editable || reminders.useDefault === false || ev.calendar.defaultReminders?.length) && (
+            <Row icon={<Bell />}>
+              <Reminders
+                value={reminders}
+                defaults={ev.calendar.defaultReminders ?? []}
+                editable={editable}
+                onChange={(next) => (isDraft ? setDraftReminders(next) : onUpdate(ev, { reminders: next }))}
+              />
             </Row>
           )}
         </Section>

@@ -1181,6 +1181,47 @@ textarea:disabled {
   font-size: 13px;
   cursor: pointer;
 }
+.reminders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+.reminder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 12px;
+  min-height: 22px;
+}
+.reminder-chip.default {
+  padding-right: 8px;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+}
+.reminder-chip.default .icon-button {
+  display: none;
+}
+.reminder-add {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  max-width: 100%;
+}
+.reminder-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reminder-custom input {
+  width: 56px;
+}
 .settings-checks {
   display: grid;
   gap: 10px;

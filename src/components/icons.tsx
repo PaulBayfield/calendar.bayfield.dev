@@ -48,6 +48,7 @@ export const Trash = (p: P) => (
     <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
   </Icon>
 );
+export const Bell = (p: P) => <Icon {...p}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></Icon>;
 export const Clock = (p: P) => <Icon {...p}><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></Icon>;
 export const Repeat = (p: P) => (
   <Icon {...p}>
