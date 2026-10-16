@@ -282,7 +282,8 @@ pub fn run() {
             google_access_token,
             google_sign_out,
             shell::set_close_to_tray,
-            shell::set_tray_labels
+            shell::set_tray_labels,
+            shell::set_tray_events
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

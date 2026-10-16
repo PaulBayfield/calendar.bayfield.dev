@@ -20,10 +20,9 @@ export function useDesktopSync(closeToTray: boolean, t: Translate) {
     import("@tauri-apps/api/core").then(({ invoke }) => invoke("set_close_to_tray", { enabled: closeToTray }));
   }, [closeToTray]);
 
-  const open = t("trayOpen");
-  const quit = t("trayQuit");
+  const labels = JSON.stringify({ open: t("trayOpen"), quit: t("trayQuit"), heading: t("trayUpcoming"), empty: t("trayNothing") });
   useEffect(() => {
     if (!isTauri) return;
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("set_tray_labels", { open, quit }));
-  }, [open, quit]);
+    import("@tauri-apps/api/core").then(({ invoke }) => invoke("set_tray_labels", JSON.parse(labels)));
+  }, [labels]);
 }

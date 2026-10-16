@@ -24,7 +24,7 @@ import type { Slot } from "./lib/server";
 import { addDays, addMinutes, atMinute, minuteOfDay, parseDateOnly, startOfDay, startOfWeek, toDateOnly } from "./lib/dates";
 import { SettingsProvider, useSettings } from "./lib/settings";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
-import { useReminders } from "./lib/reminders";
+import { useUpcoming } from "./lib/reminders";
 import { useDesktopSync } from "./lib/desktop";
 import { shiftEvent, WeekView } from "./components/WeekView";
 import { Sidebar } from "./components/Sidebar";
@@ -350,7 +350,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     setFocus((f) => ({ time: ev.start, seq: (f?.seq ?? 0) + 1 }));
   };
 
-  useReminders({ calendars: shownCalendars, enabled: settings.notifications, privacy: settings.privacy, t, f, onOpen: openFromSearch });
+  useUpcoming({ calendars: shownCalendars, chunks, notifications: settings.notifications, privacy: settings.privacy, t, f, onOpen: openFromSearch });
 
   const visibleEvents = useMemo(() => {
     const byKey = new Map<string, CalEvent>();
