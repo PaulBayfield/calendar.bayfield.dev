@@ -6,7 +6,7 @@
 //! access tokens.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{BufRead, BufReader, Write};
@@ -62,7 +62,7 @@ fn now_secs() -> u64 {
 
 fn random_b64(len: usize) -> String {
     let mut bytes = vec![0u8; len];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
