@@ -25,6 +25,10 @@ export interface Settings {
   toggledCalendars: string[];
   /** Calendar ids in the user's chosen order; unlisted calendars follow in Google's order. */
   calendarOrder: string[];
+  /** System notifications for events' popup reminders. */
+  notifications: boolean;
+  /** Desktop: the close button hides the window to the tray instead of quitting. */
+  closeToTray: boolean;
 }
 
 const STORAGE_KEY = "calendar.settings";
@@ -44,6 +48,8 @@ const DEFAULTS: Settings = {
   privacy: false,
   toggledCalendars: [],
   calendarOrder: [],
+  notifications: true,
+  closeToTray: true,
 };
 
 function load(): Settings {

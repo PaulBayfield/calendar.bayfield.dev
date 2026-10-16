@@ -23,6 +23,23 @@ npm run tauri build  # desktop installer → src-tauri/target/release/bundle/
 
 The desktop build needs Rust and the MSVC C++ build tools: see <https://tauri.app/start/prerequisites/>.
 
+### Desktop releases
+
+Bump `version` in `package.json` (the app reads it from there), commit, then push a matching tag:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+`.github/workflows/release.yml` builds the Windows installers and attaches them to a **draft**
+GitHub release; publish it when you're happy. The build reads repository **variables**
+`VITE_GOOGLE_DESKTOP_CLIENT_ID`, `VITE_API_URL`, `VITE_GOOGLE_MAPS_API_KEY` and the **secret**
+`VITE_GOOGLE_DESKTOP_CLIENT_SECRET`.
+
+The desktop app keeps running in the system tray when its window is closed (so reminders still
+fire), can launch at startup, and shows a notification for each event's popup reminders. All three
+can be turned off in Settings.
+
 ## Google setup (one-time)
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create a project and enable the

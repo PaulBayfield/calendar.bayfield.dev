@@ -6,7 +6,7 @@ import { addDays, startOfWeek, toDateOnly } from "./dates";
 export const isDemo = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
 
 export const demoCalendars: Calendar[] = [
-  { id: "me@example.com", summary: "me@example.com", backgroundColor: "#4285f4", primary: true, accessRole: "owner" },
+  { id: "me@example.com", summary: "me@example.com", backgroundColor: "#4285f4", primary: true, accessRole: "owner", defaultReminders: [{ method: "popup", minutes: 10 }] },
   { id: "work", summary: "Work", backgroundColor: "#33b679", accessRole: "owner" },
   { id: "sport", summary: "Sport", backgroundColor: "#f6bf26", accessRole: "owner" },
   { id: "holidays", summary: "Holidays", backgroundColor: "#e67c73", accessRole: "reader" },

@@ -5,6 +5,8 @@ import { getConnectUrl, getServerStatus, serverBase, type ServerStatus } from ".
 import { isTauri } from "../lib/auth";
 import { openExternal } from "../lib/open";
 import type { StringKey } from "../lib/i18n";
+import { getAutostart, setAutostart } from "../lib/desktop";
+import { notificationPermission, type NotificationPermission } from "../lib/reminders";
 import { X } from "./icons";
 
 const THEMES: { id: Theme; label: StringKey }[] = [
@@ -126,9 +128,63 @@ export function SettingsDialog({ calendars, onClose }: Props) {
           </label>
         </section>
 
+        <NotificationsSection />
         <ServerSection />
       </div>
     </div>
+  );
+}
+
+function NotificationsSection() {
+  const { t, settings, update } = useSettings();
+  const [permission, setPermission] = useState<NotificationPermission>("granted");
+  const [autostart, setAutostartState] = useState<boolean | null>(null);
+  useEffect(() => {
+    notificationPermission().then(setPermission, () => setPermission("denied"));
+    if (isTauri) getAutostart().then(setAutostartState, () => {});
+  }, []);
+
+  const toggleNotifications = async (on: boolean) => {
+    // Browsers only show the permission prompt in response to a click like this one.
+    if (on) setPermission(await notificationPermission(true).catch(() => "denied" as const));
+    update({ notifications: on });
+  };
+  const toggleAutostart = async (on: boolean) => {
+    setAutostartState(on);
+    await setAutostart(on).catch(() => setAutostartState(!on));
+  };
+
+  return (
+    <section className="settings-checks">
+      <h3>{isTauri ? t("desktop") : t("notifications")}</h3>
+      <label className="checkbox-row">
+        <input type="checkbox" checked={settings.notifications} onChange={(e) => toggleNotifications(e.target.checked)} />
+        {t("notifyBefore")}
+      </label>
+      {settings.notifications && permission === "denied" && <p className="small muted">{t("notificationsBlocked")}</p>}
+      {settings.notifications && permission === "default" && (
+        <button className="text-button" onClick={() => toggleNotifications(true)}>
+          {t("allowNotifications")}
+        </button>
+      )}
+      {isTauri && (
+        <>
+          <label className="checkbox-row">
+            <input type="checkbox" checked={settings.closeToTray} onChange={(e) => update({ closeToTray: e.target.checked })} />
+            {t("closeToTray")}
+          </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={!!autostart}
+              disabled={autostart === null}
+              onChange={(e) => toggleAutostart(e.target.checked)}
+            />
+            {t("launchAtStartup")}
+          </label>
+        </>
+      )}
+    </section>
   );
 }
 

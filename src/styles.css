@@ -1181,6 +1181,19 @@ textarea:disabled {
   font-size: 13px;
   cursor: pointer;
 }
+.settings-checks {
+  display: grid;
+  gap: 10px;
+}
+.settings-checks h3 {
+  margin-bottom: 0;
+}
+.settings-checks .text-button {
+  justify-self: start;
+}
+.settings-checks p {
+  margin: 0;
+}
 .checkbox-row input {
   accent-color: var(--primary);
 }

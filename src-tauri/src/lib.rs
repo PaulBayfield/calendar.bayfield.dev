@@ -5,6 +5,8 @@
 //! macOS Keychain, Secret Service on Linux); the webview only ever sees short-lived
 //! access tokens.
 
+mod shell;
+
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -262,11 +264,25 @@ async fn google_sign_out() -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must come first: a second launch (e.g. from the Start menu while the app sits in
+        // the tray) just brings the running window back.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            shell::show_main_window(app)
+        }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![shell::MINIMIZED_ARG]),
+        ))
+        .setup(|app| Ok(shell::setup(app)?))
+        .on_window_event(shell::on_window_event)
         .invoke_handler(tauri::generate_handler![
             google_sign_in,
             google_access_token,
-            google_sign_out
+            google_sign_out,
+            shell::set_close_to_tray,
+            shell::set_tray_labels
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

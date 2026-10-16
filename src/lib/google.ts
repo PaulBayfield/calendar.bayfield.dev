@@ -12,6 +12,12 @@ export interface Calendar {
   primary?: boolean;
   selected?: boolean;
   accessRole: "freeBusyReader" | "reader" | "writer" | "owner";
+  defaultReminders?: Reminder[];
+}
+
+export interface Reminder {
+  method: "email" | "popup";
+  minutes: number;
 }
 
 export interface EventTime {
@@ -44,7 +50,7 @@ export interface GoogleEvent {
   /** For an occurrence of a recurring event: when it was scheduled before any change. */
   originalStartTime?: EventTime;
   recurrence?: string[];
-  reminders?: unknown;
+  reminders?: { useDefault: boolean; overrides?: Reminder[] };
   transparency?: "opaque" | "transparent";
   visibility?: "default" | "public" | "private" | "confidential";
   organizer?: { email?: string; self?: boolean };

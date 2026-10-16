@@ -24,6 +24,8 @@ import type { Slot } from "./lib/server";
 import { addDays, addMinutes, atMinute, minuteOfDay, parseDateOnly, startOfDay, startOfWeek, toDateOnly } from "./lib/dates";
 import { SettingsProvider, useSettings } from "./lib/settings";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
+import { useReminders } from "./lib/reminders";
+import { useDesktopSync } from "./lib/desktop";
 import { shiftEvent, WeekView } from "./components/WeekView";
 import { Sidebar } from "./components/Sidebar";
 import { MAX_DAYS, Toolbar, WindowControls } from "./components/Toolbar";
@@ -74,6 +76,8 @@ export default function App() {
 type Status = "loading" | "signedOut" | "ready";
 
 function Root() {
+  const { settings, t } = useSettings();
+  useDesktopSync(settings.closeToTray, t);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
 
@@ -327,6 +331,9 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     setSelectedKey(ev.key);
     setFocus((f) => ({ time: ev.start, seq: (f?.seq ?? 0) + 1 }));
   };
+
+  const remindedCalendars = useMemo(() => calendars.filter((c) => !hidden.has(c.id)), [calendars, hidden]);
+  useReminders({ calendars: remindedCalendars, enabled: settings.notifications, privacy: settings.privacy, t, f, onOpen: openFromSearch });
 
   const visibleEvents = useMemo(() => {
     const byKey = new Map<string, CalEvent>();
