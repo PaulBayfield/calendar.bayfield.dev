@@ -56,6 +56,11 @@ One container serves the web app, the booking pages (`/book/<id>`) and the API. 
 VITE_GOOGLE_WEB_CLIENT_ID=xxx.apps.googleusercontent.com docker compose up -d --build
 ```
 
+Pushing to `main` builds and publishes the image to `ghcr.io/paulbayfield/calendar.bayfield.dev` (tagged
+`latest` and the `package.json` version). Set the repository **variables** `VITE_GOOGLE_WEB_CLIENT_ID` and,
+optionally, `VITE_GOOGLE_MAPS_API_KEY` (Settings → Secrets and variables → Actions → Variables); they end up in
+the public JS bundle, so they don't need to be secrets.
+
 Put it behind your reverse proxy at `https://calendar.bayfield.dev` → `localhost:8787`. Then in the app open
 **Settings → Scheduling server** and click **Connect Google** once. That gives the server its own
 refresh token so bookings work while your laptop is off. Only `OWNER_EMAIL` can create links or connect.
