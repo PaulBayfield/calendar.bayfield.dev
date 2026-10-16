@@ -2,7 +2,7 @@
 #   docker build --build-arg VITE_GOOGLE_WEB_CLIENT_ID=... -t calendar .
 #   docker run -p 8787:8787 -v calendar-data:/data --env-file server/.env calendar
 
-FROM node:24-alpine AS web
+FROM node:25-alpine AS web
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -16,7 +16,7 @@ ENV VITE_GOOGLE_WEB_CLIENT_ID=$VITE_GOOGLE_WEB_CLIENT_ID \
     VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 RUN npm run build
 
-FROM node:24-alpine
+FROM node:25-alpine
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev
