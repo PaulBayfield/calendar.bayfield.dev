@@ -123,11 +123,24 @@ async function api<T>(path: string, { method = "GET", params = {}, body }: Reque
     });
   let res = await send(false);
   if (res.status === 401) res = await send(true);
+  // Back off and retry when over the per-minute quota, as Google recommends.
+  for (let attempt = 0; attempt < 4 && (await isRateLimited(res)); attempt++) {
+    await new Promise((r) => setTimeout(r, 2 ** attempt * 1000 + Math.random() * 1000));
+    res = await send(false);
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => null);
     throw new Error(err?.error?.message ?? `Google Calendar request failed (${res.status})`);
   }
   return res.status === 204 ? (undefined as T) : res.json();
+}
+
+async function isRateLimited(res: Response): Promise<boolean> {
+  if (res.status === 429) return true;
+  if (res.status !== 403) return false;
+  const err = await res.clone().json().catch(() => null);
+  const reason = err?.error?.errors?.[0]?.reason;
+  return reason === "rateLimitExceeded" || reason === "userRateLimitExceeded";
 }
 
 async function paginate<T>(path: string, params: Record<string, string>): Promise<T[]> {

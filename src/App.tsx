@@ -40,6 +40,7 @@ import { RecurrenceDialog } from "./components/RecurrenceDialog";
 import { SearchDialog } from "./components/SearchDialog";
 
 const REFRESH_MS = 5 * 60 * 1000;
+const FOCUS_REFRESH_MS = 60 * 1000;
 const HISTORY_LIMIT = 100;
 
 /** One undoable step: how to reverse it, and how to apply it again. */
@@ -242,6 +243,8 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     const toggled = new Set(settings.toggledCalendars);
     return new Set(calendars.filter((c) => (c.selected === false) !== toggled.has(c.id)).map((c) => c.id));
   }, [calendars, settings.toggledCalendars]);
+  // Only these are fetched: every calendar costs one API request per week loaded.
+  const shownCalendars = useMemo(() => calendars.filter((c) => !hidden.has(c.id)), [calendars, hidden]);
 
   const toggleCalendar = (id: string) => {
     const toggled = new Set(settings.toggledCalendars);
@@ -253,10 +256,16 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   // Clock for the now-line, plus periodic and on-focus refreshes.
   useEffect(() => {
     const clock = setInterval(() => setNow(new Date()), 30_000);
-    const refresh = setInterval(() => setRefreshTick((n) => n + 1), REFRESH_MS);
+    let lastRefresh = Date.now();
+    const tick = () => {
+      lastRefresh = Date.now();
+      setRefreshTick((n) => n + 1);
+    };
+    const refresh = setInterval(tick, REFRESH_MS);
     const onFocus = () => {
       setNow(new Date());
-      setRefreshTick((n) => n + 1);
+      // Alt-tabbing back and forth shouldn't refetch every time (API quota is per minute).
+      if (Date.now() - lastRefresh > FOCUS_REFRESH_MS) tick();
     };
     window.addEventListener("focus", onFocus);
     return () => {
@@ -274,27 +283,34 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
 
   const loadChunks = useCallback(
     async (keys: string[], force: boolean) => {
-      const todo = keys.filter((k) => force || !loaded.current.has(k));
-      if (!todo.length || !calendars.length) return;
-      todo.forEach((k) => loaded.current.add(k));
+      // Tracked per week *and* calendar, so showing a calendar fetches just that one.
+      const todo = keys.flatMap((k) =>
+        shownCalendars.filter((c) => force || !loaded.current.has(`${k}|${c.id}`)).map((c) => ({ k, c })),
+      );
+      if (!todo.length) return;
+      todo.forEach(({ k, c }) => loaded.current.add(`${k}|${c.id}`));
       setPending((n) => n + 1);
-      try {
-        const results = await Promise.all(
-          todo.map(async (k) => {
-            const start = parseDateOnly(k);
-            const lists = await Promise.all(calendars.map((c) => listEvents(c, start, addDays(start, 7))));
-            return [k, lists.flat()] as const;
-          }),
-        );
-        setChunks((prev) => ({ ...prev, ...Object.fromEntries(results) }));
-      } catch (e) {
-        todo.forEach((k) => loaded.current.delete(k));
-        onError(e);
-      } finally {
-        setPending((n) => n - 1);
-      }
+      const results = await Promise.allSettled(
+        todo.map(async ({ k, c }) => {
+          const start = parseDateOnly(k);
+          return { k, c, events: await listEvents(c, start, addDays(start, 7)) };
+        }),
+      );
+      setChunks((prev) => {
+        const next = { ...prev };
+        for (const r of results) {
+          if (r.status !== "fulfilled") continue;
+          const { k, c, events } = r.value;
+          next[k] = [...(next[k] ?? []).filter((e) => e.calendar.id !== c.id), ...events];
+        }
+        return next;
+      });
+      results.forEach((r, i) => r.status === "rejected" && loaded.current.delete(`${todo[i].k}|${todo[i].c.id}`));
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) onError(failed.reason);
+      setPending((n) => n - 1);
     },
-    [calendars, onError],
+    [shownCalendars, onError],
   );
 
   // New calendar list → start over.
@@ -332,8 +348,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     setFocus((f) => ({ time: ev.start, seq: (f?.seq ?? 0) + 1 }));
   };
 
-  const remindedCalendars = useMemo(() => calendars.filter((c) => !hidden.has(c.id)), [calendars, hidden]);
-  useReminders({ calendars: remindedCalendars, enabled: settings.notifications, privacy: settings.privacy, t, f, onOpen: openFromSearch });
+  useReminders({ calendars: shownCalendars, enabled: settings.notifications, privacy: settings.privacy, t, f, onOpen: openFromSearch });
 
   const visibleEvents = useMemo(() => {
     const byKey = new Map<string, CalEvent>();
