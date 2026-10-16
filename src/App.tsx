@@ -38,6 +38,28 @@ import { RecurrenceDialog } from "./components/RecurrenceDialog";
 import { SearchDialog } from "./components/SearchDialog";
 
 const REFRESH_MS = 5 * 60 * 1000;
+const HISTORY_LIMIT = 100;
+
+/** One undoable step: how to reverse it, and how to apply it again. */
+interface HistoryEntry {
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+}
+
+/** The fields `patch` touches, set back to their values in `before`. */
+function inversePatch(before: CalEvent, patch: EventInput): EventInput {
+  const e = before.event;
+  const inverse: EventInput = {};
+  if (patch.start || patch.end) Object.assign(inverse, eventTimes(before.start, before.end, before.allDay));
+  if ("summary" in patch) inverse.summary = e.summary ?? "";
+  if ("description" in patch) inverse.description = e.description ?? "";
+  if ("location" in patch) inverse.location = e.location ?? "";
+  if ("colorId" in patch) inverse.colorId = e.colorId ?? null;
+  if ("transparency" in patch) inverse.transparency = e.transparency ?? "opaque";
+  if ("visibility" in patch) inverse.visibility = e.visibility === "public" || e.visibility === "private" ? e.visibility : "default";
+  if ("attendees" in patch) inverse.attendees = e.attendees ?? [];
+  return inverse;
+}
 
 const UNDO_MS = 5000;
 
@@ -399,10 +421,94 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   const groupFor = (ev: CalEvent): CalEvent[] =>
     multi && selectedKeys.has(ev.key) ? selectedEvents.filter((e) => e.key !== "draft") : [ev];
 
+  // --- Undo / redo (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) ---
+
+  const undoStack = useRef<HistoryEntry[]>([]);
+  const redoStack = useRef<HistoryEntry[]>([]);
+  /** True while an undo/redo runs, so the changes it makes aren't recorded again. */
+  const replaying = useRef(false);
+  const batchRef = useRef<HistoryEntry[] | null>(null);
+  const chunksRef = useRef(chunks);
+  chunksRef.current = chunks;
+
+  /** The current version of an event: later edits may have replaced the one a history entry captured. */
+  const latest = (ev: CalEvent): CalEvent => {
+    for (const list of Object.values(chunksRef.current)) {
+      const found = list.find((e) => e.key === ev.key);
+      if (found) return found;
+    }
+    return ev;
+  };
+
+  const combine = (entries: HistoryEntry[]): HistoryEntry =>
+    entries.length === 1
+      ? entries[0]
+      : {
+          undo: async () => {
+            for (const e of [...entries].reverse()) await e.undo();
+          },
+          redo: async () => {
+            for (const e of entries) await e.redo();
+          },
+        };
+
+  const record = (entry: HistoryEntry) => {
+    if (replaying.current) return;
+    if (batchRef.current) return void batchRef.current.push(entry);
+    undoStack.current.push(entry);
+    if (undoStack.current.length > HISTORY_LIMIT) undoStack.current.shift();
+    redoStack.current = [];
+  };
+
+  /** Records what `fn` does synchronously as a single undo step (e.g. moving several events). */
+  const batch = (fn: () => void) => {
+    const outer = batchRef.current;
+    batchRef.current = [];
+    try {
+      fn();
+    } finally {
+      const entries = batchRef.current;
+      batchRef.current = outer;
+      if (entries.length) record(combine(entries));
+    }
+  };
+
+  const replay = async (kind: "undo" | "redo") => {
+    const [from, to] = kind === "undo" ? [undoStack, redoStack] : [redoStack, undoStack];
+    const entry = from.current.pop();
+    if (!entry) return;
+    replaying.current = true;
+    try {
+      await entry[kind]();
+      to.current.push(entry);
+      setDetailsRevision((n) => n + 1); // An open popup shows the restored values.
+      flash(t(kind === "undo" ? "undone" : "redone"));
+    } catch (e) {
+      onError(e);
+    } finally {
+      replaying.current = false;
+    }
+  };
+
+  /** Brings back a deleted event. Same id, so older history entries still find it. */
+  const restoreEvent = async (ev: CalEvent) => {
+    putEvent(null, ev);
+    putEvent(ev.key, await updateEvent(ev, { status: "confirmed" }));
+  };
+  const deleteNow = async (ev: CalEvent) => {
+    putEvent(ev.key, null);
+    await deleteEvent(ev);
+  };
+  const createdEntry = (ev: CalEvent): HistoryEntry => ({
+    undo: () => deleteNow(latest(ev)),
+    redo: () => restoreEvent(ev),
+  });
+
   const saveDraft = async (calendar: Calendar, input: EventInput) => {
     try {
       const created = await createEvent(calendar, input);
       putEvent(null, created);
+      record(createdEntry(created));
       setDraft(null);
       selectOnly(created.key);
     } catch (e) {
@@ -440,13 +546,15 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     const scope = evs.some(isRecurring) ? await askScope("edit") : "this";
     if (!scope) return;
     const seen = new Set<string>();
-    for (const ev of evs) {
-      if (scope !== "this" && isRecurring(ev)) {
-        if (seen.has(ev.event.recurringEventId!)) continue;
-        seen.add(ev.event.recurringEventId!);
+    batch(() => {
+      for (const ev of evs) {
+        if (scope !== "this" && isRecurring(ev)) {
+          if (seen.has(ev.event.recurringEventId!)) continue;
+          seen.add(ev.event.recurringEventId!);
+        }
+        void applyUpdate(ev, patchFor(ev), scope);
       }
-      void applyUpdate(ev, patchFor(ev), scope);
-    }
+    });
   };
 
   const applyUpdate = async (ev: CalEvent, patch: EventInput, knownScope?: RecurrenceScope) => {
@@ -463,6 +571,12 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
         return;
       }
     }
+    const inverse = inversePatch(ev, patch);
+    if (Object.keys(inverse).length)
+      record({
+        undo: () => applyUpdate(latest(ev), inverse, "this"),
+        redo: () => applyUpdate(latest(ev), patch, "this"),
+      });
     const { conferenceData, ...rest } = patch;
     const optimistic = toCalEvent(ev.calendar, {
       ...ev.event,
@@ -493,6 +607,16 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     try {
       const moved = await moveEvent(ev, calendar);
       putEvent(ev.key, moved);
+      record({
+        undo: async () => {
+          const current = latest(moved);
+          putEvent(current.key, await moveEvent(current, ev.calendar));
+        },
+        redo: async () => {
+          const current = latest(ev);
+          putEvent(current.key, await moveEvent(current, calendar));
+        },
+      });
       selectOnly(moved.key);
     } catch (e) {
       onError(e);
@@ -500,12 +624,12 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   };
 
   /** Removes events right away; Google is only told once the undo window has passed. */
-  const pendingDelete = useRef<{ timer: ReturnType<typeof setTimeout>; commit: () => void } | null>(null);
-  const remove = async (input: CalEvent | CalEvent[]) => {
+  const pendingDelete = useRef<{ timer: ReturnType<typeof setTimeout>; commit: () => void; cancel: () => void; evs: CalEvent[] } | null>(null);
+  const remove = async (input: CalEvent | CalEvent[], knownScope?: RecurrenceScope) => {
     let evs = (Array.isArray(input) ? input : [input]).filter((e) => e.key !== "draft" && canEdit(e));
     if (!evs.length) return;
     if (evs.some(isRecurring)) {
-      const scope = await askScope("delete");
+      const scope = knownScope ?? (await askScope("delete"));
       if (!scope) return;
       if (scope !== "this") {
         // Series deletions go straight to Google (the dialog was the confirmation); the rest get the undo toast.
@@ -539,15 +663,25 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
         });
     };
     const timer = setTimeout(commit, UNDO_MS);
-    pendingDelete.current = { timer, commit };
+    const cancel = () => {
+      clearTimeout(timer);
+      pendingDelete.current = null;
+      for (const ev of evs) putEvent(null, ev);
+      setToast(null);
+    };
+    pendingDelete.current = { timer, commit, cancel, evs };
+    const deleted = evs;
+    record({
+      // Still in the undo window: nothing reached Google yet. Otherwise restore the deleted events.
+      undo: async () => {
+        if (pendingDelete.current?.evs === deleted) return pendingDelete.current.cancel();
+        for (const ev of deleted) await restoreEvent(ev);
+      },
+      redo: () => remove(deleted.map(latest), "this"),
+    });
     setToast({
       message: evs.length > 1 ? t("eventsDeleted", { n: evs.length }) : t("eventDeleted"),
-      undo: () => {
-        clearTimeout(timer);
-        pendingDelete.current = null;
-        for (const ev of evs) putEvent(null, ev);
-        setToast(null);
-      },
+      undo: cancel,
     });
   };
   useEffect(() => () => pendingDelete.current?.commit(), []);
@@ -592,6 +726,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
         }),
       );
       for (const ev of created) putEvent(null, ev);
+      if (created.length) record(combine(created.map(createdEntry)));
       selectMany(created.map((ev) => ev.key));
     } catch (e) {
       onError(e);
@@ -658,6 +793,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
         ),
       );
       for (const ev of created) putEvent(null, ev);
+      if (created.length) record(combine(created.map(createdEntry)));
       flash(t("blockedOn", { name: calendarLabel(calendar) }));
     } catch (e) {
       onError(e);
@@ -697,6 +833,12 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "k") {
       e.preventDefault();
       setSearchOpen(true);
+      return;
+    }
+    // Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo. In text fields they keep undoing typing.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !inField && !settingsOpen && ["z", "y"].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      void replay(e.key.toLowerCase() === "y" || e.shiftKey ? "redo" : "undo");
       return;
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !inField && !settingsOpen && !window.getSelection()?.toString()) {

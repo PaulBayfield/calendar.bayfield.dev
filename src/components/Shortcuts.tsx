@@ -11,6 +11,7 @@ const SHORTCUTS: [keys: string[], label: StringKey][] = [
   [["W"], "scWeek"],
   [["C"], "scNew"],
   [["Ctrl", "Clic"], "scMultiSelect"],
+  [["Ctrl", "Z", "Y"], "scUndo"],
   [["Ctrl", "X", "C", "V"], "scClipboard"],
   [["Ctrl", "D"], "scDuplicate"],
   [["Ctrl", "B"], "scSidebar"],

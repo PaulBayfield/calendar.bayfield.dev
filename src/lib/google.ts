@@ -68,6 +68,8 @@ export interface CalEvent {
 
 /** Fields we write. `null` clears a field. */
 export interface EventInput {
+  /** "confirmed" brings back a deleted event (Google keeps them as cancelled). */
+  status?: "confirmed";
   summary?: string;
   description?: string;
   location?: string;
