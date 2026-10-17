@@ -1,6 +1,6 @@
 [package]
 name = "calendar"
-version = "0.1.3"
+version = "0.1.4"
 description = "A lightweight Google Calendar client"
 authors = ["bayfield"]
 edition = "2024"
