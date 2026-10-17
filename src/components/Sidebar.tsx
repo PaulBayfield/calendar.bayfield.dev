@@ -22,12 +22,13 @@ interface Props {
 
 export function Sidebar(props: Props) {
   const { calendars, hidden, onToggle } = props;
-  const { t } = useSettings();
+  const { t, settings } = useSettings();
   const mine = calendars.filter((c) => c.primary || c.accessRole === "owner");
   const others = calendars.filter((c) => !mine.includes(c));
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ "--sidebar-w": `${settings.sidebarWidth}px` } as CSSProperties}>
+      <ResizeHandle />
       <div className="sidebar-top" data-tauri-drag-region>
         <button className="icon-button" title={`${t("toggleSidebar")} (Ctrl+B)`} onClick={props.onClose}>
           <PanelLeft />
@@ -65,6 +66,51 @@ export function Sidebar(props: Props) {
         )}
       </div>
     </aside>
+  );
+}
+
+const SIDEBAR_MIN_W = 200;
+const SIDEBAR_MAX_W = 480;
+const SIDEBAR_DEFAULT_W = 248;
+
+/** Drag the sidebar's right edge to resize it; double-click to reset. */
+function ResizeHandle() {
+  const { update } = useSettings();
+  const drag = useRef<{ x: number; w: number; aside: HTMLElement } | null>(null);
+  const clamp = (w: number) => Math.round(Math.min(SIDEBAR_MAX_W, Math.max(SIDEBAR_MIN_W, w)));
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const aside = e.currentTarget.parentElement!;
+    drag.current = { x: e.clientX, w: aside.getBoundingClientRect().width, aside };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.documentElement.classList.add("resizing-sidebar");
+    e.preventDefault();
+  };
+  // Resize live through the CSS variable; only save the width once the drag ends.
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (d) d.aside.style.setProperty("--sidebar-w", `${clamp(d.w + e.clientX - d.x)}px`);
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    document.documentElement.classList.remove("resizing-sidebar");
+    update({ sidebarWidth: clamp(d.w + e.clientX - d.x) });
+  };
+
+  return (
+    <div
+      className="sidebar-resize"
+      role="separator"
+      aria-orientation="vertical"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onDoubleClick={() => update({ sidebarWidth: SIDEBAR_DEFAULT_W })}
+    />
   );
 }
 

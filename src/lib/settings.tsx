@@ -17,6 +17,8 @@ export interface Settings {
   /** Day count used on phone-sized screens. */
   mobileDays: number;
   sidebar: boolean;
+  /** Desktop sidebar width in pixels. */
+  sidebarWidth: number;
   panel: boolean;
   eventDetails: "popover" | "panel";
   /** Blur event titles and calendar names, keeping only the colours visible. */
@@ -43,6 +45,7 @@ const DEFAULTS: Settings = {
   days: 7,
   mobileDays: 3,
   sidebar: true,
+  sidebarWidth: 248,
   panel: true,
   eventDetails: "popover",
   privacy: false,

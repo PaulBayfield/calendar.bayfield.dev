@@ -514,7 +514,8 @@ textarea:disabled {
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  width: 248px;
+  position: relative;
+  width: var(--sidebar-w, 248px);
   flex: none;
   display: flex;
   flex-direction: column;
@@ -523,6 +524,38 @@ textarea:disabled {
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   overflow: hidden;
+}
+.sidebar-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 6px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  background: var(--slot);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.sidebar-resize:hover::after,
+.resizing-sidebar .sidebar-resize::after {
+  opacity: 1;
+  transition-delay: 150ms;
+}
+/* Keep the resize cursor and stop text selection while dragging. */
+.resizing-sidebar,
+.resizing-sidebar * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 .sidebar > :not(.sidebar-scroll) {
   flex: none;
@@ -1781,6 +1814,9 @@ textarea:disabled {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
     box-shadow: var(--shadow);
     animation: drawer-in 180ms ease-out;
+  }
+  .sidebar-resize {
+    display: none;
   }
   .drawer-backdrop,
   .sheet-backdrop {
