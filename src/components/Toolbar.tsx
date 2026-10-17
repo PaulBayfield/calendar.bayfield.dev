@@ -144,7 +144,7 @@ function AccountMenu(p: { account?: string; onOpenSettings: () => void; onSignOu
               p.onOpenSettings();
             }}
           >
-            {t("settings")} <kbd>,</kbd>
+            {t("settings")} <kbd>Ctrl</kbd> <kbd>,</kbd>
           </button>
           <button onClick={p.onSignOut}>{t("signOut")}</button>
         </div>

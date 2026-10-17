@@ -870,6 +870,11 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
       setSearchOpen(true);
       return;
     }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === ",") {
+      e.preventDefault();
+      setSettingsOpen(true);
+      return;
+    }
     // Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo. In text fields they keep undoing typing.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !inField && !settingsOpen && ["z", "y"].includes(e.key.toLowerCase())) {
       e.preventDefault();
@@ -917,7 +922,6 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     else if (key === "\\") toggleSidebar();
     else if (key === ".") togglePanel();
     else if (key === "h") update({ privacy: !settings.privacy });
-    else if (key === ",") setSettingsOpen(true);
     else if (key === "/") setSearchOpen(true);
     else if (key === "delete" && selectedEvents.length) remove(selectedEvents);
     else return;

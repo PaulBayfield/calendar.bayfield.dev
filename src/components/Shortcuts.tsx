@@ -17,7 +17,7 @@ const SHORTCUTS: [keys: string[], label: StringKey][] = [
   [["Ctrl", "B"], "scSidebar"],
   [["."], "scPanel"],
   [["H"], "scPrivacy"],
-  [[","], "settings"],
+  [["Ctrl", ","], "settings"],
   [["Esc"], "scClose"],
 ];
 
