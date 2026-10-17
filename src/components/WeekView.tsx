@@ -34,6 +34,8 @@ interface Props {
   onMoveMany: (events: CalEvent[], deltaMs: number) => void;
   onCreate: (start: Date, end: Date, allDay: boolean) => void;
   onMove: (event: CalEvent, start: Date, end: Date) => void;
+  /** Where the event being moved or resized would land if dropped now; null when not dragging one. */
+  onDragPreview: (preview: { key: string; start: Date; end: Date } | null) => void;
   onAddSlot: (slot: Slot) => void;
   onRemoveSlot: (index: number) => void;
   onShiftDays: (n: number) => void;
@@ -283,6 +285,19 @@ export function WeekView(props: Props) {
       else p.onMove(drag.ev, drag.start, drag.end);
     }
   };
+
+  // Report where the dragged event would land, so its details panel can follow along.
+  const preview = (drag?.kind === "move" || drag?.kind === "resize") && drag.moved ? drag : null;
+  const previewKey = preview?.ev.key;
+  const previewStart = preview?.start.getTime();
+  const previewEnd = preview?.end.getTime();
+  useEffect(() => {
+    propsRef.current.onDragPreview(
+      previewKey && previewStart !== undefined && previewEnd !== undefined
+        ? { key: previewKey, start: new Date(previewStart), end: new Date(previewEnd) }
+        : null,
+    );
+  }, [previewKey, previewStart, previewEnd]);
 
   // Show the dragged event at its preview position.
   const shown = useMemo(() => {

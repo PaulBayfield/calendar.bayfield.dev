@@ -370,6 +370,16 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     return null;
   }, [selectedKey, draft, chunks]);
 
+  /** Live times of the event being dragged on the grid, so its details follow the pointer. */
+  const [dragPreview, setDragPreview] = useState<{ key: string; start: Date; end: Date } | null>(null);
+  const shownEvent = useMemo(
+    () =>
+      selectedEvent && dragPreview?.key === selectedEvent.key
+        ? { ...selectedEvent, start: dragPreview.start, end: dragPreview.end }
+        : selectedEvent,
+    [selectedEvent, dragPreview],
+  );
+
   /** Replaces/removes an event in every cached chunk it touches. */
   const putEvent = useCallback((removeKey: string | null, ev: CalEvent | null) => {
     setChunks((prev) => {
@@ -994,6 +1004,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
           onSelect={select}
           onCreate={startDraft}
           onMove={moveTo}
+          onDragPreview={setDragPreview}
           onMoveMany={shiftAll}
           onAddSlot={(slot) => setSlots((s) => [...s, slot].sort((a, b) => a.start.getTime() - b.start.getTime()))}
           onRemoveSlot={(i) => setSlots((s) => s.filter((_, j) => j !== i))}
@@ -1021,7 +1032,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
               key={`${selectedEvent.key}:${detailsRevision}`}
               variant="panel"
               onToggleVariant={() => update({ eventDetails: "popover" })}
-              ev={selectedEvent}
+              ev={shownEvent!}
               knownEvents={knownEvents}
               isDraft={selectedEvent.key === "draft"}
               calendars={orderedCalendars}
@@ -1043,7 +1054,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
             key={`${selectedEvent.key}:${detailsRevision}`}
             variant="popover"
             onToggleVariant={() => update({ eventDetails: "panel" })}
-            ev={selectedEvent}
+            ev={shownEvent!}
             knownEvents={knownEvents}
             isDraft={selectedEvent.key === "draft"}
             calendars={orderedCalendars}
