@@ -40,8 +40,10 @@ import { SelectionBar } from "./components/SelectionBar";
 import { RecurrenceDialog } from "./components/RecurrenceDialog";
 import { SearchDialog } from "./components/SearchDialog";
 
-const REFRESH_MS = 5 * 60 * 1000;
-const FOCUS_REFRESH_MS = 60 * 1000;
+/** How often to pick up changes made elsewhere, while the app is visible. */
+const REFRESH_MS = 60 * 1000;
+/** Coming back to the app refetches if the data is older than this. */
+const FOCUS_REFRESH_MS = 15 * 1000;
 const HISTORY_LIMIT = 100;
 
 /** One undoable step: how to reverse it, and how to apply it again. */
@@ -264,17 +266,21 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
       lastRefresh = Date.now();
       setRefreshTick((n) => n + 1);
     };
-    const refresh = setInterval(tick, REFRESH_MS);
+    // Hidden tabs and minimised windows don't poll; they catch up when shown again.
+    const refresh = setInterval(() => document.visibilityState === "visible" && tick(), REFRESH_MS);
     const onFocus = () => {
+      if (document.visibilityState !== "visible") return;
       setNow(new Date());
       // Alt-tabbing back and forth shouldn't refetch every time (API quota is per minute).
       if (Date.now() - lastRefresh > FOCUS_REFRESH_MS) tick();
     };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
     return () => {
       clearInterval(clock);
       clearInterval(refresh);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
     };
   }, []);
 
