@@ -578,8 +578,13 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
    * "all", each series is changed once even if several of its occurrences are in `evs`.
    */
   const updateMany = async (evs: CalEvent[], patchFor: (ev: CalEvent) => EventInput) => {
-    const scope = evs.some(isRecurring) ? await askScope("edit") : "this";
-    if (!scope) return;
+    let scope: RecurrenceScope | null = "this";
+    if (evs.some(isRecurring)) {
+      // Keep the events where they were dropped while the dialog is open.
+      for (const ev of evs) showPatched(ev, patchFor(ev));
+      scope = await askScope("edit");
+      if (!scope) return evs.forEach((ev) => putEvent(ev.key, ev));
+    }
     const seen = new Set<string>();
     batch(() => {
       for (const ev of evs) {
@@ -592,17 +597,35 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     });
   };
 
+  /** Shows the change right away, before Google confirms it. */
+  const showPatched = (ev: CalEvent, patch: EventInput) => {
+    const { conferenceData, ...rest } = patch;
+    if (conferenceData) return;
+    const optimistic = toCalEvent(ev.calendar, {
+      ...ev.event,
+      ...rest,
+      colorId: patch.colorId === null ? undefined : (patch.colorId ?? ev.event.colorId),
+    } as GoogleEvent);
+    if (optimistic) putEvent(ev.key, optimistic);
+  };
+
   const applyUpdate = async (ev: CalEvent, patch: EventInput, knownScope?: RecurrenceScope) => {
     if (isRecurring(ev)) {
-      const scope = knownScope ?? (await askScope("edit"));
-      if (!scope) return;
+      let scope = knownScope;
+      if (!scope) {
+        showPatched(ev, patch);
+        scope = (await askScope("edit")) ?? undefined;
+        if (!scope) return putEvent(ev.key, ev);
+      }
       if (scope !== "this") {
+        showPatched(ev, patch); // Stays until the reload brings the updated series.
         try {
           await updateSeries(ev, patch, scope);
-          reloadAll();
         } catch (e) {
+          putEvent(ev.key, ev);
           onError(e);
         }
+        reloadAll();
         return;
       }
     }
@@ -612,13 +635,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
         undo: () => applyUpdate(latest(ev), inverse, "this"),
         redo: () => applyUpdate(latest(ev), patch, "this"),
       });
-    const { conferenceData, ...rest } = patch;
-    const optimistic = toCalEvent(ev.calendar, {
-      ...ev.event,
-      ...rest,
-      colorId: patch.colorId === null ? undefined : (patch.colorId ?? ev.event.colorId),
-    } as GoogleEvent);
-    if (optimistic && !conferenceData) putEvent(ev.key, optimistic);
+    showPatched(ev, patch);
     try {
       putEvent(ev.key, await updateEvent(ev, patch));
     } catch (e) {
