@@ -12,6 +12,11 @@
   [![Node.js](https://img.shields.io/badge/Node.js-24-339933)](https://nodejs.org)
   [![SQLite](https://img.shields.io/badge/SQLite-node%3Asqlite-003B57)](https://nodejs.org/api/sqlite.html)
   [![Web](https://img.shields.io/badge/web-calendar.bayfield.dev-brightgreen)](https://calendar.bayfield.dev)
+
+  <br />
+  <br />
+
+  <img src="docs/screenshots/week-light.png" alt="Week view in the light theme, with an event's details open" width="900" />
 </div>
 
 
@@ -23,6 +28,7 @@ This is a personal project built for my own Google account, not a polished produ
 ## 📋 • Table of Contents
 
 - [📖 • Overview](#--overview)
+- [🖼️ • Screenshots](#️--screenshots)
 - [🧩 • Components](#--components)
 - [🛠️ • Tech Stack](#️--tech-stack)
 - [🚀 • Getting Started](#--getting-started)
@@ -59,6 +65,22 @@ Key features:
 - Privacy mode to hide event details when sharing your screen
 - Desktop: keeps running in the system tray so reminders still fire, can launch at startup, and shows a notification for each event's popup reminders (all three can be turned off in Settings)
 - Themes: System, Light, Dark, Rosé Pine, Rosé Pine Dawn. UI in French or English
+
+
+## 🖼️ • Screenshots
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/event-panel-dark.png" alt="Dark theme, with an event open in the side panel" /></td>
+    <td><img src="docs/screenshots/rosepine.png" alt="Week view in the Rosé Pine theme" /></td>
+  </tr>
+  <tr>
+    <td align="center">Dark theme, event details in the side panel</td>
+    <td align="center">Rosé Pine theme</td>
+  </tr>
+</table>
+
+The screenshots use [demo mode](#--demo-mode), so all events are sample data.
 
 
 ## 🧩 • Components
@@ -243,6 +265,7 @@ calendar.bayfield.dev/
 │   ├── ci.yml                  # Type-checks and builds the web app and server
 │   ├── deployment.yaml         # Builds & publishes the Docker image to ghcr.io
 │   └── release.yml             # Builds Windows installers on version tags
+├── docs/screenshots/           # README images (taken in demo mode)
 ├── src/                        # React app (shared by web and desktop)
 │   ├── components/             # WeekView, EventPanel, Sidebar, SchedulePanel, SettingsDialog, ...
 │   ├── lib/                    # Google API, auth, i18n, settings, places, reminders, demo data
