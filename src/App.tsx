@@ -12,6 +12,7 @@ import {
   updateEvent,
   updateSeries,
   deleteSeries,
+  isGone,
   isRecurring,
   canEdit,
   type RecurrenceScope,
@@ -530,6 +531,11 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     putEvent(null, ev);
     putEvent(ev.key, await updateEvent(ev, { status: "confirmed" }));
   };
+  /** Google says the event no longer exists (deleted on another device): drop it here too. */
+  const dropGone = (ev: CalEvent) => {
+    putEvent(ev.key, null);
+    flash(t("eventGone"));
+  };
   const deleteNow = async (ev: CalEvent) => {
     putEvent(ev.key, null);
     await deleteEvent(ev);
@@ -542,9 +548,10 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   const saveDraft = async (calendar: Calendar, input: EventInput) => {
     try {
       const created = await createEvent(calendar, input);
+      setDraft(null);
+      if (!created) return selectOnly(null);
       putEvent(null, created);
       record(createdEntry(created));
-      setDraft(null);
       selectOnly(created.key);
     } catch (e) {
       onError(e);
@@ -622,8 +629,11 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
         try {
           await updateSeries(ev, patch, scope);
         } catch (e) {
-          putEvent(ev.key, ev);
-          onError(e);
+          if (isGone(e)) dropGone(ev);
+          else {
+            putEvent(ev.key, ev);
+            onError(e);
+          }
         }
         reloadAll();
         return;
@@ -637,8 +647,11 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
       });
     showPatched(ev, patch);
     try {
-      putEvent(ev.key, await updateEvent(ev, patch));
+      const updated = await updateEvent(ev, patch);
+      if (updated) putEvent(ev.key, updated);
+      else dropGone(ev);
     } catch (e) {
+      if (isGone(e)) return dropGone(ev);
       putEvent(ev.key, ev);
       onError(e);
     }
@@ -658,6 +671,10 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   const changeCalendar = async (ev: CalEvent, calendar: Calendar) => {
     try {
       const moved = await moveEvent(ev, calendar);
+      if (!moved) {
+        selectOnly(null);
+        return dropGone(ev);
+      }
       putEvent(ev.key, moved);
       record({
         undo: async () => {
@@ -671,7 +688,9 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
       });
       selectOnly(moved.key);
     } catch (e) {
-      onError(e);
+      if (!isGone(e)) return onError(e);
+      selectOnly(null);
+      dropGone(ev);
     }
   };
 
@@ -776,7 +795,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
           const moved = shiftEvent(src, deltaMs);
           return [createEvent(target, copyInput(src, moved.start, moved.end))];
         }),
-      );
+      ).then((evs) => evs.filter((ev) => ev !== null));
       for (const ev of created) putEvent(null, ev);
       if (created.length) record(combine(created.map(createdEntry)));
       selectMany(created.map((ev) => ev.key));
@@ -843,7 +862,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
             visibility: "private",
           }),
         ),
-      );
+      ).then((evs) => evs.filter((ev) => ev !== null));
       for (const ev of created) putEvent(null, ev);
       if (created.length) record(combine(created.map(createdEntry)));
       flash(t("blockedOn", { name: calendarLabel(calendar) }));

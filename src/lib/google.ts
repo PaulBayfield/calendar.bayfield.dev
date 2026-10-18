@@ -117,6 +117,19 @@ interface RequestOptions {
   body?: unknown;
 }
 
+/** A failed Google request, with its HTTP status. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/** The event no longer exists on Google (deleted from another device, for example). */
+export const isGone = (e: unknown) => e instanceof ApiError && (e.status === 404 || e.status === 410);
+
 async function api<T>(path: string, { method = "GET", params = {}, body }: RequestOptions = {}): Promise<T> {
   const url = `${API}${path}?${new URLSearchParams(params)}`;
   const send = async (forceRefresh: boolean) =>
@@ -137,7 +150,7 @@ async function api<T>(path: string, { method = "GET", params = {}, body }: Reque
   }
   if (!res.ok) {
     const err = await res.json().catch(() => null);
-    throw new Error(err?.error?.message ?? `Google Calendar request failed (${res.status})`);
+    throw new ApiError(err?.error?.message ?? `Google Calendar request failed (${res.status})`, res.status);
   }
   return res.status === 204 ? (undefined as T) : res.json();
 }
@@ -231,34 +244,55 @@ const eventsPath = (calendar: Calendar, eventId?: string) =>
 // Always notify guests, and opt in to conference data so Meet links can be created.
 const WRITE_PARAMS = { sendUpdates: "all", conferenceDataVersion: "1" };
 
-export async function createEvent(calendar: Calendar, input: EventInput): Promise<CalEvent> {
-  if (isDemo) return demoWrite(calendar, { id: `demo-${crypto.randomUUID()}`, ...input });
-  const event = await api<GoogleEvent>(eventsPath(calendar), { method: "POST", params: WRITE_PARAMS, body: input });
-  return toCalEvent(calendar, event)!;
+/**
+ * Writes to the same event run one after another. Otherwise a quick colour change followed by a
+ * calendar change can reach Google out of order, and the colour change lands on the old calendar.
+ * Keyed by event id, which stays the same when the event moves to another calendar.
+ */
+const writeQueues = new Map<string, Promise<unknown>>();
+function serial<T>(eventId: string, write: () => Promise<T>): Promise<T> {
+  const prev = writeQueues.get(eventId) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(write);
+  writeQueues.set(eventId, next);
+  const forget = () => writeQueues.get(eventId) === next && writeQueues.delete(eventId);
+  next.then(forget, forget);
+  return next;
 }
 
-export async function updateEvent(ev: CalEvent, patch: EventInput): Promise<CalEvent> {
+// Writes return null when Google answers with an event we don't show: a cancelled (deleted) one,
+// or a working location.
+
+export async function createEvent(calendar: Calendar, input: EventInput): Promise<CalEvent | null> {
+  if (isDemo) return demoWrite(calendar, { id: `demo-${crypto.randomUUID()}`, ...input });
+  const event = await api<GoogleEvent>(eventsPath(calendar), { method: "POST", params: WRITE_PARAMS, body: input });
+  return toCalEvent(calendar, event);
+}
+
+export async function updateEvent(ev: CalEvent, patch: EventInput): Promise<CalEvent | null> {
   if (isDemo) return demoWrite(ev.calendar, { ...ev.event, ...patch });
-  const event = await api<GoogleEvent>(eventsPath(ev.calendar, ev.event.id), {
-    method: "PATCH",
-    params: WRITE_PARAMS,
-    body: patch,
-  });
-  return toCalEvent(ev.calendar, event)!;
+  const event = await serial(ev.event.id, () =>
+    api<GoogleEvent>(eventsPath(ev.calendar, ev.event.id), { method: "PATCH", params: WRITE_PARAMS, body: patch }),
+  );
+  return toCalEvent(ev.calendar, event);
 }
 
 export async function deleteEvent(ev: CalEvent): Promise<void> {
   if (isDemo) return;
-  await api(eventsPath(ev.calendar, ev.event.id), { method: "DELETE", params: { sendUpdates: "all" } });
+  await serial(ev.event.id, () =>
+    api(eventsPath(ev.calendar, ev.event.id), { method: "DELETE", params: { sendUpdates: "all" } }),
+  );
 }
 
-export async function moveEvent(ev: CalEvent, destination: Calendar): Promise<CalEvent> {
+export async function moveEvent(ev: CalEvent, destination: Calendar): Promise<CalEvent | null> {
   if (isDemo) return demoWrite(destination, ev.event);
-  const event = await api<GoogleEvent>(`${eventsPath(ev.calendar, ev.event.id)}/move`, {
-    method: "POST",
-    params: { destination: destination.id, sendUpdates: "all" },
+  return serial(ev.event.id, async () => {
+    const event = await api<GoogleEvent>(`${eventsPath(ev.calendar, ev.event.id)}/move`, {
+      method: "POST",
+      params: { destination: destination.id, sendUpdates: "all" },
+    });
+    // The reply can describe the copy left behind (cancelled); read the event where it now lives.
+    return toCalEvent(destination, event) ?? toCalEvent(destination, await getEvent(destination, ev.event.id));
   });
-  return toCalEvent(destination, event)!;
 }
 
 /** Demo mode: echo writes back as if Google accepted them. */
