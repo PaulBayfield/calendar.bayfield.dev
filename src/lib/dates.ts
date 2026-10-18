@@ -40,6 +40,17 @@ export function minuteOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
+/**
+ * Where `d` falls on `day`'s clock face, in minutes (0 to 1440). Uses the time shown on the clock,
+ * not the time elapsed since midnight, so a 25-hour or 23-hour day (DST change) still lines up
+ * with the hour labels. Times before or after the day are clamped to its edges.
+ */
+export function clockMinute(d: Date, day: Date): number {
+  if (d.getTime() <= startOfDay(day).getTime()) return 0;
+  if (d.getTime() >= atMinute(day, 24 * 60).getTime()) return 24 * 60;
+  return minuteOfDay(d) + d.getSeconds() / 60;
+}
+
 /** Local midnight of `day` plus `minutes` (DST-safe). */
 export function atMinute(day: Date, minutes: number): Date {
   const x = startOfDay(day);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { canEdit, type CalEvent } from "../lib/google";
 import type { Slot } from "../lib/server";
-import { addMinutes, atMinute, dayDiff, isSameDay, isWeekend, minuteOfDay } from "../lib/dates";
+import { addMinutes, atMinute, clockMinute, dayDiff, isSameDay, isWeekend, minuteOfDay } from "../lib/dates";
 import { utcOffsetLabel } from "../lib/i18n";
 import { useSettings } from "../lib/settings";
 import type { MenuTarget } from "./ContextMenu";
@@ -537,12 +537,14 @@ function createRange(drag: { anchor: Date; floor: Date; ceil: Date }): { start: 
 function daySegment(start: Date, end: Date, day: Date): { top: number; height: number } | null {
   const dayStart = day.getTime();
   const dayEnd = atMinute(day, 24 * 60).getTime();
-  const from = Math.max(start.getTime(), dayStart);
-  const to = Math.min(Math.max(end.getTime(), start.getTime() + SNAP * 60_000), dayEnd);
-  if (to <= from) return null;
+  const shownEnd = new Date(Math.max(end.getTime(), start.getTime() + SNAP * 60_000));
+  if (shownEnd.getTime() <= dayStart || start.getTime() >= dayEnd) return null;
+  const from = clockMinute(start, day);
+  // Max: an event inside the hour that repeats when clocks go back can end "before" it starts.
+  const to = Math.max(clockMinute(shownEnd, day), from + SNAP);
   return {
-    top: ((from - dayStart) / 3_600_000) * HOUR_HEIGHT,
-    height: ((to - from) / 3_600_000) * HOUR_HEIGHT,
+    top: (from / 60) * HOUR_HEIGHT,
+    height: ((to - from) / 60) * HOUR_HEIGHT,
   };
 }
 
@@ -560,13 +562,10 @@ function layoutDay(day: Date, events: CalEvent[]): TimedSegment[] {
   const dayEnd = atMinute(day, 24 * 60).getTime();
   const segments: TimedSegment[] = events
     .filter((ev) => !ev.allDay && ev.start.getTime() < dayEnd && ev.end.getTime() > dayStart)
-    .map((ev) => ({
-      ev,
-      startMin: Math.max(0, (ev.start.getTime() - dayStart) / 60000),
-      endMin: Math.min(24 * 60, (ev.end.getTime() - dayStart) / 60000),
-      col: 0,
-      cols: 1,
-    }))
+    .map((ev) => {
+      const startMin = clockMinute(ev.start, day);
+      return { ev, startMin, endMin: Math.max(clockMinute(ev.end, day), startMin), col: 0, cols: 1 };
+    })
     .sort((a, b) => a.startMin - b.startMin || b.endMin - a.endMin);
 
   // A cluster is a run of transitively overlapping events; they all share one column count.
