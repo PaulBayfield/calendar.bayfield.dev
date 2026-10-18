@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useSettings, type Settings, type Theme } from "../lib/settings";
 import { calendarName, isWritable, type Calendar } from "../lib/google";
 import { getConnectUrl, getServerStatus, serverBase, type ServerStatus } from "../lib/server";
@@ -7,7 +7,9 @@ import { openExternal } from "../lib/open";
 import type { StringKey } from "../lib/i18n";
 import { getAutostart, setAutostart } from "../lib/desktop";
 import { notificationPermission, type NotificationPermission } from "../lib/reminders";
-import { X } from "./icons";
+import { APP_VERSION, RELEASES_URL, useUpdateCheck } from "../lib/updates";
+import { ShortcutList } from "./Shortcuts";
+import { Bell, Globe, Info, Keyboard, Sliders, X } from "./icons";
 
 const THEMES: { id: Theme; label: StringKey }[] = [
   { id: "system", label: "themeSystem" },
@@ -17,19 +19,89 @@ const THEMES: { id: Theme; label: StringKey }[] = [
   { id: "rosepine-dawn", label: "themeRosepineDawn" },
 ];
 
+export type SettingsPage = "preferences" | "notifications" | "server" | "shortcuts" | "about";
+
 interface Props {
   calendars: Calendar[];
+  page?: SettingsPage;
   onClose: () => void;
 }
 
-export function SettingsDialog({ calendars, onClose }: Props) {
-  const { t, settings, update } = useSettings();
+export function SettingsDialog({ calendars, page: initialPage, onClose }: Props) {
+  const { t } = useSettings();
+  const [page, setPage] = useState<SettingsPage>(initialPage ?? "preferences");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const items: { id: SettingsPage; label: StringKey; icon: ReactNode; page: () => ReactNode }[] = [
+    { id: "preferences", label: "preferences", icon: <Sliders />, page: () => <PreferencesPage calendars={calendars} /> },
+    { id: "notifications", label: isTauri ? "notificationsDesktop" : "notifications", icon: <Bell />, page: () => <NotificationsPage /> },
+    { id: "server", label: "serverShort", icon: <Globe />, page: () => <ServerPage /> },
+    { id: "shortcuts", label: "shortcuts", icon: <Keyboard />, page: () => <ShortcutsPage /> },
+    { id: "about", label: "about", icon: <Info />, page: () => <AboutPage /> },
+  ];
+  const current = items.find((i) => i.id === page) ?? items[0];
+
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="settings-modal" role="dialog" aria-label={t("settings")}>
+        <nav className="settings-nav">
+          <div className="settings-nav-label">{t("settings")}</div>
+          {items.map((i) => (
+            <button key={i.id} className={`settings-nav-item${current.id === i.id ? " active" : ""}`} onClick={() => setPage(i.id)}>
+              {i.icon}
+              <span>{t(i.label)}</span>
+            </button>
+          ))}
+          <button className="settings-version" onClick={() => setPage("about")}>
+            {t("versionLabel", { version: APP_VERSION })}
+          </button>
+        </nav>
+        <div className="settings-content">
+          <button className="icon-button small settings-close" aria-label={t("close")} onClick={onClose}>
+            <X />
+          </button>
+          <div className="settings-page" key={current.id}>
+            {current.page()}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageHeader({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <header className="settings-page-header">
+      <h2>{title}</h2>
+      {hint && <p className="small muted">{hint}</p>}
+    </header>
+  );
+}
+
+/** A setting: its name and explanation on the left, the control on the right. */
+function Row({ label, hint, children, disabled }: { label: ReactNode; hint?: ReactNode; children: ReactNode; disabled?: boolean }) {
+  return (
+    <div className={`setting-row${disabled ? " disabled" : ""}`}>
+      <div className="setting-text">
+        <span>{label}</span>
+        {hint && <span className="settings-hint">{hint}</span>}
+      </div>
+      <div className="setting-control">{children}</div>
+    </div>
+  );
+}
+
+function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+  return <input type="checkbox" className="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />;
+}
+
+function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
+  const { t, settings, update } = useSettings();
 
   const select = <K extends keyof Settings>(key: K, options: [Settings[K], string][]) => (
     <select
@@ -45,103 +117,81 @@ export function SettingsDialog({ calendars, onClose }: Props) {
   );
 
   return (
-    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-label={t("settings")}>
-        <div className="dialog-header">
-          <h2>{t("settings")}</h2>
-          <button className="icon-button small" aria-label={t("close")} onClick={onClose}>
-            <X />
-          </button>
+    <>
+      <PageHeader title={t("preferences")} hint={t("preferencesHint")} />
+      <section>
+        <h3>{t("appearance")}</h3>
+        <div className="theme-picker">
+          {THEMES.map(({ id, label }) => (
+            <button key={id} className={`theme-card${settings.theme === id ? " active" : ""}`} onClick={() => update({ theme: id })}>
+              <span className={`theme-preview ${id}`}>
+                <span />
+                <span />
+                <span />
+              </span>
+              {t(label)}
+            </button>
+          ))}
         </div>
-
-        <section>
-          <h3>{t("appearance")}</h3>
-          <div className="theme-picker">
-            {THEMES.map(({ id, label }) => (
-              <button
-                key={id}
-                className={`theme-card${settings.theme === id ? " active" : ""}`}
-                onClick={() => update({ theme: id })}
-              >
-                <span className={`theme-preview ${id}`}>
-                  <span />
-                  <span />
-                  <span />
-                </span>
-                {t(label)}
-              </button>
+      </section>
+      <section className="settings-rows">
+        <Row label={t("language")}>
+          {select("language", [
+            ["auto", t("automatic")],
+            ["fr", "Français"],
+            ["en", "English"],
+          ])}
+        </Row>
+        <Row label={t("weekStart")}>
+          {select("weekStartsOn", [
+            [1, t("monday")],
+            [0, t("sunday")],
+          ])}
+        </Row>
+        <Row label={t("timeFormat")}>
+          {select("timeFormat", [
+            ["auto", t("automatic")],
+            ["24h", "24h"],
+            ["12h", "12h"],
+          ])}
+        </Row>
+      </section>
+      <section className="settings-rows">
+        <h3>{t("events")}</h3>
+        <Row label={t("eventDetails")}>
+          {select("eventDetails", [
+            ["popover", t("popup")],
+            ["panel", t("sidePanel")],
+          ])}
+        </Row>
+        <Row label={t("defaultDuration")}>
+          {select(
+            "defaultDuration",
+            [15, 30, 45, 60, 90].map((n) => [n, t("minutes", { n })]),
+          )}
+        </Row>
+        <Row label={t("defaultCalendar")}>
+          <select value={settings.defaultCalendarId ?? ""} onChange={(e) => update({ defaultCalendarId: e.target.value || undefined })}>
+            <option value="">—</option>
+            {calendars.filter(isWritable).map((c) => (
+              <option key={c.id} value={c.id}>
+                {calendarName(c)}
+              </option>
             ))}
-          </div>
-        </section>
-
-        <section className="settings-grid">
-          <label>
-            <span>{t("language")}</span>
-            {select("language", [
-              ["auto", t("automatic")],
-              ["fr", "Français"],
-              ["en", "English"],
-            ])}
-          </label>
-          <label>
-            <span>{t("weekStart")}</span>
-            {select("weekStartsOn", [
-              [1, t("monday")],
-              [0, t("sunday")],
-            ])}
-          </label>
-          <label>
-            <span>{t("timeFormat")}</span>
-            {select("timeFormat", [
-              ["auto", t("automatic")],
-              ["24h", "24h"],
-              ["12h", "12h"],
-            ])}
-          </label>
-          <label>
-            <span>{t("eventDetails")}</span>
-            {select("eventDetails", [
-              ["popover", t("popup")],
-              ["panel", t("sidePanel")],
-            ])}
-          </label>
-          <label>
-            <span>{t("defaultDuration")}</span>
-            {select(
-              "defaultDuration",
-              [15, 30, 45, 60, 90].map((n) => [n, t("minutes", { n })]),
-            )}
-          </label>
-          <label>
-            <span>{t("defaultCalendar")}</span>
-            <select
-              value={settings.defaultCalendarId ?? ""}
-              onChange={(e) => update({ defaultCalendarId: e.target.value || undefined })}
-            >
-              <option value="">—</option>
-              {calendars.filter(isWritable).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {calendarName(c)}
-                </option>
-              ))}
-            </select>
-          </label>
-        </section>
-
-        <NotificationsSection />
-        <ServerSection />
-      </div>
-    </div>
+          </select>
+        </Row>
+      </section>
+    </>
   );
 }
 
-function NotificationsSection() {
+function NotificationsPage() {
   const { t, settings, update } = useSettings();
   const [permission, setPermission] = useState<NotificationPermission>("granted");
   const [autostart, setAutostartState] = useState<boolean | null>(null);
   useEffect(() => {
     notificationPermission().then(setPermission, () => setPermission("denied"));
-    if (isTauri) getAutostart().then(setAutostartState, () => {});
+    if (isTauri) getAutostart().then(setAutostartState, () => setAutostartState(false));
   }, []);
 
   const toggleNotifications = async (on: boolean) => {
@@ -154,41 +204,38 @@ function NotificationsSection() {
     await setAutostart(on).catch(() => setAutostartState(!on));
   };
 
+  const hint =
+    settings.notifications && permission === "denied" ? t("notificationsBlocked") : undefined;
+
   return (
-    <section className="settings-checks">
-      <h3>{isTauri ? t("desktop") : t("notifications")}</h3>
-      <label className="checkbox-row">
-        <input type="checkbox" checked={settings.notifications} onChange={(e) => toggleNotifications(e.target.checked)} />
-        {t("notifyBefore")}
-      </label>
-      {settings.notifications && permission === "denied" && <p className="small muted">{t("notificationsBlocked")}</p>}
-      {settings.notifications && permission === "default" && (
-        <button className="text-button" onClick={() => toggleNotifications(true)}>
-          {t("allowNotifications")}
-        </button>
-      )}
+    <>
+      <PageHeader title={isTauri ? t("notificationsDesktop") : t("notifications")} />
+      <section className="settings-rows">
+        <Row label={t("notifyBefore")} hint={hint}>
+          {settings.notifications && permission === "default" && (
+            <button className="text-button" onClick={() => toggleNotifications(true)}>
+              {t("allowNotifications")}
+            </button>
+          )}
+          <Switch checked={settings.notifications} onChange={(on) => void toggleNotifications(on)} />
+        </Row>
+      </section>
       {isTauri && (
-        <>
-          <label className="checkbox-row">
-            <input type="checkbox" checked={settings.closeToTray} onChange={(e) => update({ closeToTray: e.target.checked })} />
-            {t("closeToTray")}
-          </label>
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={!!autostart}
-              disabled={autostart === null}
-              onChange={(e) => toggleAutostart(e.target.checked)}
-            />
-            {t("launchAtStartup")}
-          </label>
-        </>
+        <section className="settings-rows">
+          <h3>{t("desktop")}</h3>
+          <Row label={t("launchAtStartup")}>
+            <Switch checked={!!autostart} disabled={autostart === null} onChange={(on) => void toggleAutostart(on)} />
+          </Row>
+          <Row label={t("closeToTray")}>
+            <Switch checked={settings.closeToTray} onChange={(on) => update({ closeToTray: on })} />
+          </Row>
+        </section>
       )}
-    </section>
+    </>
   );
 }
 
-function ServerSection() {
+function ServerPage() {
   const { t, settings, update } = useSettings();
   const [url, setUrl] = useState(settings.serverUrl);
   const [status, setStatus] = useState<ServerStatus | "checking" | { error: string } | null>(null);
@@ -215,36 +262,110 @@ function ServerSection() {
     }
   };
 
+  const connected = !!(status && typeof status === "object" && "connected" in status && status.connected);
+
   return (
-    <section>
-      <h3>{t("server")}</h3>
-      <div className="server-row">
-        <input
-          type="url"
-          placeholder={isTauri ? "https://calendar.bayfield.dev" : location.origin}
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onBlur={() => url !== settings.serverUrl && update({ serverUrl: url.trim() })}
-        />
-      </div>
-      <div className="server-row">
-        <span className="small muted">
-          {status === "checking"
-            ? t("checking")
-            : status && "error" in status
-              ? status.error
-              : status?.connected
-                ? t("connectedAs", { email: status.email ?? "" })
-                : base
-                  ? t("notConnected")
-                  : t("serverNotConfigured")}
-        </span>
-        {base && status !== "checking" && !(status && "connected" in status && status.connected) && (
-          <button className="text-button" onClick={connect}>
-            {t("connectGoogle")}
+    <>
+      <PageHeader title={t("server")} hint={t("serverHint")} />
+      <section className="settings-rows">
+        <Row label={t("serverUrl")}>
+          <input
+            type="url"
+            className="server-url"
+            placeholder={isTauri ? "https://calendar.bayfield.dev" : location.origin}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onBlur={() => url !== settings.serverUrl && update({ serverUrl: url.trim() })}
+          />
+        </Row>
+        <Row
+          label={t("googleAccount")}
+          hint={
+            status === "checking"
+              ? t("checking")
+              : status && "error" in status
+                ? status.error
+                : connected
+                  ? t("connectedAs", { email: (status as ServerStatus).email ?? "" })
+                  : base
+                    ? t("notConnected")
+                    : t("serverNotConfigured")
+          }
+        >
+          {base && status !== "checking" && !connected && (
+            <button className="text-button" onClick={connect}>
+              {t("connectGoogle")}
+            </button>
+          )}
+        </Row>
+      </section>
+    </>
+  );
+}
+
+function ShortcutsPage() {
+  const { t } = useSettings();
+  return (
+    <>
+      <PageHeader title={t("shortcuts")} />
+      <ShortcutList />
+    </>
+  );
+}
+
+/** The app's version, and a way to look for a newer one. */
+function AboutPage() {
+  const { t, settings, update } = useSettings();
+  const { state, check } = useUpdateCheck(false);
+  const release = state.status === "available" ? state.release : null;
+  useEffect(() => {
+    void check();
+  }, [check]);
+
+  const status =
+    state.status === "checking" || state.status === "idle"
+      ? t("checkingUpdates")
+      : state.status === "upToDate"
+        ? t("upToDate")
+        : state.status === "error"
+          ? t("updateCheckFailed")
+          : t("updateAvailable", { version: release?.version ?? "" });
+
+  return (
+    <>
+      <PageHeader title={t("about")} />
+      <section className="settings-rows">
+        <Row label={t("appName")} hint={isTauri ? t("aboutDesktop") : t("aboutWeb")}>
+          <span className="version-tag">{t("versionLabel", { version: APP_VERSION })}</span>
+        </Row>
+        <Row label={t("updates")} hint={status}>
+          {release ? (
+            <>
+              <button className="text-button" onClick={() => openExternal(release.url)}>
+                {t("whatsNew")}
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => {
+                  if (settings.skippedUpdate === release.version) update({ skippedUpdate: "" });
+                  openExternal(release.installer ?? release.url);
+                }}
+              >
+                {t("download")}
+              </button>
+            </>
+          ) : (
+            <button className="text-button" disabled={state.status === "checking"} onClick={() => void check()}>
+              {t("checkForUpdates")}
+            </button>
+          )}
+        </Row>
+        <Row label={t("releaseNotes")}>
+          <button className="text-button" onClick={() => openExternal(RELEASES_URL)}>
+            {t("openInBrowser")}
           </button>
-        )}
-      </div>
-    </section>
+        </Row>
+      </section>
+    </>
   );
 }

@@ -31,6 +31,8 @@ export interface Settings {
   notifications: boolean;
   /** Desktop: the close button hides the window to the tray instead of quitting. */
   closeToTray: boolean;
+  /** A new version the user chose not to be told about again. */
+  skippedUpdate: string;
 }
 
 const STORAGE_KEY = "calendar.settings";
@@ -53,6 +55,7 @@ const DEFAULTS: Settings = {
   calendarOrder: [],
   notifications: true,
   closeToTray: true,
+  skippedUpdate: "",
 };
 
 function load(): Settings {

@@ -21,24 +21,31 @@ const SHORTCUTS: [keys: string[], label: StringKey][] = [
   [["Esc"], "scClose"],
 ];
 
+export function ShortcutList() {
+  const { t } = useSettings();
+  return (
+    <div className="shortcut-list">
+      {SHORTCUTS.map(([keys, label]) => (
+        <div key={label} className="shortcut">
+          <span>{t(label)}</span>
+          <span className="keys">
+            {keys.map((k) => (
+              <kbd key={k}>{k}</kbd>
+            ))}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Shortcuts({ onClose }: { onClose: () => void }) {
   const { t } = useSettings();
   return (
     <>
       <PanelHeader label={t("shortcuts")} onClose={onClose} />
       <div className="panel-body">
-        <div className="shortcut-list">
-          {SHORTCUTS.map(([keys, label]) => (
-            <div key={label} className="shortcut">
-              <span>{t(label)}</span>
-              <span className="keys">
-                {keys.map((k) => (
-                  <kbd key={k}>{k}</kbd>
-                ))}
-              </span>
-            </div>
-          ))}
-        </div>
+        <ShortcutList />
       </div>
     </>
   );

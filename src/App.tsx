@@ -27,6 +27,8 @@ import { SettingsProvider, useSettings } from "./lib/settings";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 import { useUpcoming } from "./lib/reminders";
 import { useDesktopSync } from "./lib/desktop";
+import { useUpdateCheck } from "./lib/updates";
+import { openExternal } from "./lib/open";
 import { shiftEvent, WeekView } from "./components/WeekView";
 import { Sidebar } from "./components/Sidebar";
 import { MAX_DAYS, Toolbar, WindowControls } from "./components/Toolbar";
@@ -34,7 +36,7 @@ import { EventPanel } from "./components/EventPanel";
 import { EventPopover } from "./components/EventPopover";
 import { SchedulePanel } from "./components/SchedulePanel";
 import { Shortcuts } from "./components/Shortcuts";
-import { SettingsDialog } from "./components/SettingsDialog";
+import { SettingsDialog, type SettingsPage } from "./components/SettingsDialog";
 import { ContextMenu, type MenuTarget } from "./components/ContextMenu";
 import { SelectionBar } from "./components/SelectionBar";
 import { RecurrenceDialog } from "./components/RecurrenceDialog";
@@ -215,7 +217,10 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   const [draft, setDraft] = useState<CalEvent | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState<SettingsPage | false>(false);
+  const updates = useUpdateCheck();
+  const newRelease =
+    updates.state.status === "available" && updates.state.release.version !== settings.skippedUpdate ? updates.state.release : null;
   const [toast, setToast] = useState<{ message: string; undo?: () => void } | null>(null);
   const loaded = useRef(new Set<string>());
   const wide = useMediaQuery("(min-width: 1000px)");
@@ -914,7 +919,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === ",") {
       e.preventDefault();
-      setSettingsOpen(true);
+      setSettingsOpen("preferences");
       return;
     }
     // Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo. In text fields they keep undoing typing.
@@ -1029,9 +1034,25 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
           onPrev={() => go(-1)}
           onNext={() => go(1)}
           onTogglePanel={togglePanel}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => setSettingsOpen("preferences")}
           onSignOut={onSignOut}
         />
+        {newRelease && (
+          <div className="banner update-banner" role="status">
+            <span>{t("updateAvailable", { version: newRelease.version })}</span>
+            <span className="banner-actions">
+              <button className="link-button" onClick={() => openExternal(newRelease.installer ?? newRelease.url)}>
+                {t("download")}
+              </button>
+              <button className="link-button" onClick={() => openExternal(newRelease.url)}>
+                {t("whatsNew")}
+              </button>
+              <button className="link-button" onClick={() => update({ skippedUpdate: newRelease.version })}>
+                {t("later")}
+              </button>
+            </span>
+          </div>
+        )}
         {error && (
           <div className="banner" role="alert">
             <span>{error}</span>
@@ -1157,7 +1178,7 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
           }}
         />
       )}
-      {settingsOpen && <SettingsDialog calendars={orderedCalendars} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsDialog calendars={orderedCalendars} page={settingsOpen} onClose={() => setSettingsOpen(false)} />}
       {toast && (
         <div className="toast">
           <span>{toast.message}</span>
