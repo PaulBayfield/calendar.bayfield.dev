@@ -355,7 +355,7 @@ export function EventPanel({
               )}
             </Row>
           )}
-          {(editable || reminders.useDefault === false || ev.calendar.defaultReminders?.length) && (
+          {(editable || reminders.useDefault === false || !!ev.calendar.defaultReminders?.length) && (
             <Row icon={<Bell />}>
               <Reminders
                 value={reminders}
