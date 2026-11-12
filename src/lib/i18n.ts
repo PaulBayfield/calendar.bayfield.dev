@@ -211,6 +211,20 @@ const en = {
   weatherRain: "Rain",
   weatherSnow: "Snow",
   weatherStorm: "Thunderstorm",
+  weatherHigh: "High",
+  weatherLow: "Low",
+  weatherPrecipitation: "Precipitation",
+  weatherTemperature: "Temperature",
+  weatherCityMissing: "{city} isn't available any more; showing this one instead.",
+  weatherForecast: "Forecast",
+  weatherObserved: "Observed",
+  weatherNow: "Now",
+  weatherFeels: "Feels like",
+  weatherRainChance: "Chance of rain",
+  weatherWind: "Wind",
+  weatherUv: "UV index",
+  weatherSun: "Sunrise / sunset",
+  weatherHumidity: "Humidity",
 };
 
 type Strings = typeof en;
@@ -427,6 +441,20 @@ const fr: Strings = {
   weatherRain: "Pluie",
   weatherSnow: "Neige",
   weatherStorm: "Orage",
+  weatherHigh: "Max",
+  weatherLow: "Min",
+  weatherPrecipitation: "Précipitations",
+  weatherTemperature: "Température",
+  weatherCityMissing: "{city} n'est plus disponible ; cette ville est affichée à la place.",
+  weatherForecast: "Prévision",
+  weatherObserved: "Relevé",
+  weatherNow: "Maintenant",
+  weatherFeels: "Ressenti",
+  weatherRainChance: "Risque de pluie",
+  weatherWind: "Vent",
+  weatherUv: "Indice UV",
+  weatherSun: "Lever / coucher",
+  weatherHumidity: "Humidité",
 };
 
 export type Lang = "en" | "fr";

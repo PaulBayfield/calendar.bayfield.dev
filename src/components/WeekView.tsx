@@ -2,42 +2,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { canEdit, type CalEvent } from "../lib/google";
 import type { Slot } from "../lib/server";
 import { addMinutes, atMinute, clockMinute, dayDiff, isSameDay, isWeekend, minuteOfDay, toDateOnly } from "../lib/dates";
-import { utcOffsetLabel, type StringKey } from "../lib/i18n";
-import { useWeather, weatherKind, type WeatherDay, type WeatherKind } from "../lib/weather";
+import { utcOffsetLabel } from "../lib/i18n";
+import { useWeather } from "../lib/weather";
 import { useSettings } from "../lib/settings";
 import type { MenuTarget } from "./ContextMenu";
-import { Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Lock, Sun } from "./icons";
-
-const WEATHER: Record<WeatherKind, { icon: typeof Sun; label: StringKey }> = {
-  clear: { icon: Sun, label: "weatherClear" },
-  partly: { icon: CloudSun, label: "weatherPartly" },
-  cloudy: { icon: Cloud, label: "weatherCloudy" },
-  fog: { icon: CloudFog, label: "weatherFog" },
-  drizzle: { icon: CloudDrizzle, label: "weatherDrizzle" },
-  rain: { icon: CloudRain, label: "weatherRain" },
-  snow: { icon: CloudSnow, label: "weatherSnow" },
-  storm: { icon: CloudLightning, label: "weatherStorm" },
-};
-
-function WeatherIcon({ day }: { day: WeatherDay }) {
-  const { t } = useSettings();
-  const kind = weatherKind(day.code);
-  if (!kind) return null;
-  const { icon: Icon, label } = WEATHER[kind];
-  const deg = (n: number | null) => (n === null ? "–" : `${Math.round(n)}°`);
-  const title = [
-    `${t(label)} · ${day.city}`,
-    `${deg(day.max)} / ${deg(day.min)}`,
-    day.precipitation ? `${Math.round(day.precipitation * 10) / 10} mm` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <span className={`day-weather ${kind}`} title={title} aria-label={title} role="img">
-      <Icon size={14} />
-    </span>
-  );
-}
+import { Lock } from "./icons";
+import { WeatherIcon } from "./WeatherCard";
 
 export const HOUR_HEIGHT = 60;
 const ALLDAY_LANE_HEIGHT = 24;
@@ -396,7 +366,7 @@ export function WeekView(props: Props) {
             <div key={day.toISOString()} className={`day-head${isSameDay(day, now) ? " today" : ""}`}>
               <span className="weekday">{f.weekday(day)}</span>
               <span className="date">{day.getDate()}</span>
-              {weather?.get(toDateOnly(day)) && <WeatherIcon day={weather.get(toDateOnly(day))!} />}
+              {weather?.days.get(toDateOnly(day)) && <WeatherIcon day={weather.days.get(toDateOnly(day))!} weather={weather} />}
             </div>
           ))}
         </div>

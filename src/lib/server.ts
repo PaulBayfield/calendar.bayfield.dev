@@ -38,13 +38,44 @@ export interface ScheduleLink {
 }
 
 export interface WeatherDay {
-  city: string;
   /** Local calendar day, YYYY-MM-DD. */
   date: string;
+  /** Today and later come from the forecast; earlier days are observations. */
+  forecast: boolean;
   max: number | null;
   min: number | null;
   precipitation: number | null;
   code: number | null;
+  feelsMax?: number | null;
+  feelsMin?: number | null;
+  /** Percent. */
+  precipitationProbability?: number | null;
+  /** km/h. */
+  wind?: number | null;
+  gusts?: number | null;
+  uv?: number | null;
+  /** Local "YYYY-MM-DDTHH:MM". */
+  sunrise?: string | null;
+  sunset?: string | null;
+}
+
+export interface WeatherCurrent {
+  time: string;
+  temperature: number | null;
+  feels: number | null;
+  humidity: number | null;
+  code: number | null;
+  wind: number | null;
+  isDay: boolean | null;
+}
+
+export interface WeatherCity {
+  /** The city actually served: the requested one, or the first known if that's unknown. */
+  city: string;
+  cities: string[];
+  current: WeatherCurrent | null;
+  days: WeatherDay[];
+  updatedAt: string | null;
 }
 
 export interface ServerStatus {
@@ -75,7 +106,8 @@ async function call<T>(base: string, path: string, init: RequestInit = {}): Prom
 
 export const getServerStatus = (base: string) => call<ServerStatus>(base, "/api/status");
 
-export const getWeather = (base: string) => call<WeatherDay[]>(base, "/api/weather");
+export const getWeather = (base: string, city: string) =>
+  call<WeatherCity>(base, `/api/weather?city=${encodeURIComponent(city)}`);
 
 export const getConnectUrl = (base: string) => call<{ url: string }>(base, "/api/google/connect", { method: "POST" });
 

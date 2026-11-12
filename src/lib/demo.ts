@@ -1,6 +1,7 @@
 // Dev-only sample data: open http://localhost:1420/?demo to try the UI without a Google account.
 
 import type { CalEvent, Calendar, GoogleEvent } from "./google";
+import type { WeatherCity, WeatherDay } from "./server";
 import { addDays, startOfWeek, toDateOnly } from "./dates";
 
 export const isDemo = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
@@ -100,4 +101,46 @@ export function demoEvents(calendars: Calendar[], from: Date, to: Date): CalEven
   const events: CalEvent[] = [];
   for (let week = startOfWeek(from, 1); week < to; week = addDays(week, 7)) events.push(...demoWeek(calendars, week));
   return events.filter((e) => e.start < to && e.end > from);
+}
+
+/** Made-up weather shaped like the server's: 30 days of history, then today + 6 days of forecast. */
+export function demoWeather(requested: string): WeatherCity {
+  const cities = ["Lyon", "Paris"];
+  const city = cities.find((c) => c.toLowerCase() === requested.toLowerCase()) ?? cities[0];
+  const c = cities.indexOf(city);
+  const codes = [0, 1, 2, 3, 61, 63, 80, 2, 0, 45, 51, 3, 95, 1, 0, 71, 2, 61, 3, 0, 1];
+  const today = new Date();
+  const days: WeatherDay[] = [];
+  for (let i = -30; i <= 6; i++) {
+    const code = codes[(i + 40 + c * 4) % codes.length];
+    const max = Math.round((12 + c * 2 + Math.sin((i + c * 3) / 2.2) * 4) * 10) / 10;
+    const min = Math.round((max - 6 - Math.cos(i) * 2) * 10) / 10;
+    const wet = code >= 51;
+    const day = toDateOnly(addDays(today, i));
+    days.push({
+      date: day,
+      forecast: i >= 0,
+      max,
+      min,
+      precipitation: wet ? Math.round((1 + ((i * 7 + 70 + c) % 9)) * 10) / 10 : 0,
+      code,
+      wind: 10 + ((i + 30) % 5) * 4,
+      ...(i >= 0 && {
+        feelsMax: max - 1.5,
+        feelsMin: min - 2.5,
+        precipitationProbability: wet ? 60 + ((i * 13) % 35) : (i * 11) % 20,
+        gusts: 25 + ((i + 30) % 5) * 6,
+        uv: Math.max(0, 3 - (i % 3)),
+        sunrise: `${day}T07:${String(50 + i).padStart(2, "0")}`,
+        sunset: `${day}T17:${String(15 - i).padStart(2, "0")}`,
+      }),
+    });
+  }
+  return {
+    city,
+    cities,
+    current: { time: today.toISOString(), temperature: days[30].max! - 2, feels: days[30].max! - 4, humidity: 72, code: days[30].code, wind: 14, isDay: true },
+    days,
+    updatedAt: today.toISOString(),
+  };
 }

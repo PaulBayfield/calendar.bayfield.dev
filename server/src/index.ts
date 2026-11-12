@@ -120,66 +120,187 @@ async function availableStarts(link: Link): Promise<string[]> {
 }
 
 // --- Weather ---
+//
+// The datawarehouse's per-city route (current conditions, 7-day forecast, daily history) is
+// reshaped into one list of days. Until that route is deployed, the older "last 1000 rows"
+// feed fills in, with history only.
 
 interface WeatherDay {
-  city: string;
   /** Local calendar day, YYYY-MM-DD. */
   date: string;
+  /** Today and later come from the forecast; earlier days are observations. */
+  forecast: boolean;
   max: number | null;
   min: number | null;
   precipitation: number | null;
   code: number | null;
+  feelsMax?: number | null;
+  feelsMin?: number | null;
+  precipitationProbability?: number | null;
+  wind?: number | null;
+  gusts?: number | null;
+  uv?: number | null;
+  /** Local "YYYY-MM-DDTHH:MM". */
+  sunrise?: string | null;
+  sunset?: string | null;
+}
+
+interface WeatherCurrent {
+  time: string;
+  temperature: number | null;
+  feels: number | null;
+  humidity: number | null;
+  code: number | null;
+  wind: number | null;
+  isDay: boolean | null;
+}
+
+interface WeatherCity {
+  city: string;
+  cities: string[];
+  current: WeatherCurrent | null;
+  days: WeatherDay[];
+  updatedAt: string | null;
 }
 
 const WEATHER_TTL_MS = 30 * 60_000;
-let weatherCache: { at: number; days: WeatherDay[] } | null = null;
-let weatherInflight: Promise<WeatherDay[]> | null = null;
+const WEATHER_HISTORY_DAYS = 30;
+const weatherCache = new Map<string, { at: number; data: WeatherCity }>();
+const weatherInflight = new Map<string, Promise<WeatherCity>>();
 
-const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+/** Postgres NUMERIC columns can arrive as strings. */
+const num = (v: unknown): number | null => {
+  const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
+};
+const str = (v: unknown) => (typeof v === "string" ? v : null);
+const dateOnly = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
 
-async function fetchWeather(): Promise<WeatherDay[]> {
-  const res = await fetch(`${DW_API_URL}/api/services/weather/daily`, {
-    headers: { "X-API-Key": DW_API_KEY },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`Weather source answered ${res.status}`);
-  const rows: unknown = await res.json();
-  if (!Array.isArray(rows)) throw new Error("Unexpected weather data");
+async function dw(path: string): Promise<{ status: number; body: any }> {
+  const res = await fetch(`${DW_API_URL}${path}`, { headers: { "X-API-Key": DW_API_KEY }, signal: AbortSignal.timeout(10_000) });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+class WeatherRouteMissing extends Error {}
+
+async function fetchCityWeather(requested: string): Promise<WeatherCity> {
+  const get = (city: string) =>
+    dw(`/api/services/weather/city?city=${encodeURIComponent(city)}&history_days=${WEATHER_HISTORY_DAYS}`);
+  let res = requested ? await get(requested) : await dw("/api/services/weather/city");
+  const cities: string[] = Array.isArray(res.body?.available_cities) ? res.body.available_cities.filter((c: unknown) => typeof c === "string") : [];
+  // 400 (no city) and 404 (unknown city) both list the cities; fall back to the first one.
+  if ((res.status === 400 || res.status === 404) && cities.length) res = await get(cities[0]);
+  else if (res.status === 404 || res.status === 500) throw new WeatherRouteMissing(`city route answered ${res.status}`);
+  if (res.status !== 200 || typeof res.body?.city !== "string") throw new Error(`Weather source answered ${res.status}`);
+
+  const b = res.body;
+  const days = new Map<string, WeatherDay>();
+  for (const r of Array.isArray(b.history_daily) ? b.history_daily : []) {
+    const date = dateOnly(r?.date);
+    if (!date) continue;
+    days.set(date, {
+      date,
+      forecast: false,
+      max: num(r.temperature_max),
+      min: num(r.temperature_min),
+      precipitation: num(r.precipitation_sum),
+      code: num(r.weather_code),
+      wind: num(r.wind_speed_max),
+    });
+  }
+  for (const r of Array.isArray(b.forecast_daily) ? b.forecast_daily : []) {
+    const date = dateOnly(r?.date);
+    if (!date) continue;
+    days.set(date, {
+      date,
+      forecast: true,
+      max: num(r.temperature_max),
+      min: num(r.temperature_min),
+      precipitation: num(r.precipitation_sum),
+      code: num(r.weather_code),
+      feelsMax: num(r.apparent_temperature_max),
+      feelsMin: num(r.apparent_temperature_min),
+      precipitationProbability: num(r.precipitation_probability_max),
+      wind: num(r.wind_speed_max),
+      gusts: num(r.wind_gusts_max),
+      uv: num(r.uv_index_max),
+      sunrise: str(r.sunrise),
+      sunset: str(r.sunset),
+    });
+  }
+  const cur = b.current;
+  return {
+    city: b.city,
+    cities: cities.length ? cities : [b.city],
+    current: cur
+      ? {
+          time: str(cur.timestamp) ?? "",
+          temperature: num(cur.temperature),
+          feels: num(cur.apparent_temperature),
+          humidity: num(cur.humidity),
+          code: num(cur.weather_code),
+          wind: num(cur.wind_speed),
+          isDay: typeof cur.is_day === "boolean" ? cur.is_day : null,
+        }
+      : null,
+    days: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    updatedAt: str(b.last_updated),
+  };
+}
+
+/** The older feed: daily observations for every city, last 1000 rows. */
+async function fetchLegacyWeather(requested: string): Promise<WeatherCity> {
+  const res = await dw("/api/services/weather/daily");
+  if (res.status !== 200 || !Array.isArray(res.body)) throw new Error(`Weather source answered ${res.status}`);
+  const rows: any[] = res.body.filter((r: any) => typeof r?.city === "string" && !Number.isNaN(Date.parse(r?.date)));
+  const cities = [...new Set(rows.map((r) => r.city as string))].sort((a, b) => a.localeCompare(b));
+  const city = cities.find((c) => c.toLowerCase() === requested.toLowerCase()) ?? cities[0] ?? requested;
   const days = new Map<string, WeatherDay>();
   for (const r of rows) {
-    const t = Date.parse(r?.date);
-    if (typeof r?.city !== "string" || Number.isNaN(t)) continue;
-    // Days are stamped at local midnight in UTC (e.g. 23:00Z the day before for Paris);
-    // shifting by 12h lands on the right calendar day for any zone from UTC-12 to UTC+11.
-    const date = new Date(t + 12 * 60 * 60_000).toISOString().slice(0, 10);
-    days.set(`${r.city}|${date}`, {
-      city: r.city,
+    if (r.city !== city) continue;
+    // Stamped at local midnight in UTC (23:00Z the day before for Paris); +12h lands on the right day.
+    const date = new Date(Date.parse(r.date) + 12 * 60 * 60_000).toISOString().slice(0, 10);
+    days.set(date, {
       date,
+      forecast: false,
       max: num(r.temperature_max),
       min: num(r.temperature_min),
       precipitation: num(r.precipitation_sum),
       code: num(r.weather_code),
     });
   }
-  return [...days.values()];
+  return { city, cities, current: null, days: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)), updatedAt: null };
 }
 
-async function weather(): Promise<WeatherDay[]> {
-  if (weatherCache && weatherCache.at + WEATHER_TTL_MS > Date.now()) return weatherCache.days;
-  weatherInflight ??= fetchWeather()
-    .then((days) => {
-      weatherCache = { at: Date.now(), days };
-      return days;
-    })
-    .finally(() => (weatherInflight = null));
+async function cityWeather(requested: string): Promise<WeatherCity> {
+  const key = requested.toLowerCase();
+  const hit = weatherCache.get(key);
+  if (hit && hit.at + WEATHER_TTL_MS > Date.now()) return hit.data;
+  let inflight = weatherInflight.get(key);
+  if (!inflight) {
+    inflight = fetchCityWeather(requested)
+      .catch((e) => {
+        if (!(e instanceof WeatherRouteMissing)) throw e;
+        console.warn(`Weather: ${e.message}; using the daily feed`);
+        return fetchLegacyWeather(requested);
+      })
+      .then((data) => {
+        if (weatherCache.size > 50) weatherCache.clear();
+        weatherCache.set(key, { at: Date.now(), data });
+        return data;
+      })
+      .finally(() => weatherInflight.delete(key));
+    weatherInflight.set(key, inflight);
+  }
   try {
-    return await weatherInflight;
+    return await inflight;
   } catch (e) {
     // Better slightly stale than nothing while the source is down.
-    if (weatherCache) return weatherCache.days;
+    if (hit) return hit.data;
     throw e;
   }
 }
+
 
 // --- Request helpers ---
 
@@ -331,7 +452,8 @@ app.get("/api/google/callback", async (c) => {
 app.get("/api/weather", requireOwner, async (c) => {
   if (!DW_API_KEY) return c.json({ error: "Weather isn't configured on the server (DW_API_KEY)" }, 503);
   try {
-    return c.json(await weather());
+    const city = (c.req.query("city") ?? "").trim().slice(0, 100);
+    return c.json(await cityWeather(city));
   } catch (e) {
     console.warn("Weather fetch failed:", (e as Error).message);
     return c.json({ error: "Couldn't load the weather" }, 502);

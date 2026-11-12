@@ -829,8 +829,216 @@ textarea:disabled {
 .day-weather {
   display: inline-flex;
   margin-left: 2px;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
   color: var(--text-muted);
   font-weight: 400;
+  cursor: default;
+}
+.day-weather:hover,
+.day-weather[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+/* Weather card. Chart colours validated for CVD separation on light and dark surfaces. */
+.weather-card {
+  --temp-max: #eb6834;
+  --temp-min: #2a78d6;
+  position: fixed;
+  z-index: 40;
+  padding: 14px 16px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  backdrop-filter: blur(22px) saturate(1.6);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+  animation: popover-in 120ms ease-out;
+}
+:root[data-theme="dark"] .weather-card,
+:root[data-theme="rosepine"] .weather-card {
+  --temp-max: #d95926;
+  --temp-min: #3987e5;
+}
+.weather-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.weather-card-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.weather-card-icon.clear,
+.weather-card-icon.partly {
+  color: #e0a526;
+}
+.weather-card-icon.rain,
+.weather-card-icon.drizzle,
+.weather-card-icon.storm {
+  color: #4a8fd9;
+}
+.weather-card-badge {
+  margin-left: auto;
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.weather-card-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.weather-card-details div {
+  display: contents;
+}
+.weather-card-details dt {
+  color: var(--text-muted);
+}
+.weather-card-details dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.weather-card-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.weather-card-title strong {
+  font-size: 14px;
+}
+.weather-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0 0;
+}
+.weather-card-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.weather-card-stats dt {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.weather-card-stats dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.weather-chart {
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+}
+.weather-chart figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.weather-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+.weather-legend .swatch {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  margin-left: 6px;
+}
+.weather-legend .swatch.max {
+  background: var(--temp-max);
+}
+.weather-legend .swatch.min {
+  background: var(--temp-min);
+}
+.weather-chart svg {
+  display: block;
+  overflow: visible;
+}
+.weather-chart .grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.weather-chart .crosshair {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+.weather-chart .axis {
+  fill: var(--text-faint);
+  font-size: 10px;
+}
+.weather-chart .axis.focus {
+  fill: var(--text);
+  font-weight: 600;
+}
+.weather-chart .band {
+  fill: color-mix(in srgb, var(--temp-max) 10%, transparent);
+}
+.weather-chart .series {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.weather-chart .series.max {
+  stroke: var(--temp-max);
+}
+.weather-chart .series.min {
+  stroke: var(--temp-min);
+}
+.weather-chart .series.forecast {
+  stroke-dasharray: 4 4;
+}
+.weather-chart .rain.forecast:not(.active) {
+  fill: color-mix(in srgb, var(--temp-min) 25%, transparent);
+}
+.weather-legend .swatch.dashed {
+  background: repeating-linear-gradient(90deg, var(--text-muted) 0 3px, transparent 3px 5px);
+}
+.weather-chart .dot {
+  stroke: var(--bg-elevated);
+  stroke-width: 2;
+}
+.weather-chart .dot.max {
+  fill: var(--temp-max);
+}
+.weather-chart .dot.min {
+  fill: var(--temp-min);
+}
+.weather-chart .value {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.weather-chart .rain {
+  fill: color-mix(in srgb, var(--temp-min) 45%, transparent);
+}
+.weather-chart .rain.active {
+  fill: var(--temp-min);
+}
+.weather-chart .hit {
+  fill: transparent;
+}
+.weather-chart-readout {
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 .day-weather.clear,
 .day-weather.partly {
