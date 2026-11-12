@@ -190,6 +190,8 @@ If you signed in before the contacts permissions were added, sign out and back i
 | `GOOGLE_DESKTOP_CLIENT_ID` | **Yes** (desktop) | "Desktop app" client ID, so the desktop build can call the API too |
 | `DATA_DIR` | No (default `./data`) | Where the SQLite database lives (set to `/data` in Docker) |
 | `CLIENT_IP_HEADER` | No | Header your reverse proxy puts the visitor IP in, used for rate limiting (e.g. `cf-connecting-ip` behind a Cloudflare Tunnel) |
+| `DW_API_KEY` | No | Datawarehouse API key for the daily weather icons (Settings → Preferences → Weather) |
+| `DW_API_URL` | No | Datawarehouse base URL (default `https://dash.bayfield.dev`) |
 | `CORS_ORIGINS` | No | Extra origins allowed to call the API (defaults cover the Tauri app and the Vite dev server) |
 
 ### Running Locally

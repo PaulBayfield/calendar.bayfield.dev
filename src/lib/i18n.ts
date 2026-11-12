@@ -198,6 +198,19 @@ const en = {
   download: "Download",
   openInBrowser: "Open in browser",
   close: "Close",
+  weather: "Weather",
+  showWeather: "Show weather next to each day",
+  weatherHint: "Daily forecast from the scheduling server.",
+  weatherCity: "Location",
+  weatherServerNeeded: "Needs the scheduling server (Settings → Server).",
+  weatherClear: "Clear",
+  weatherPartly: "Partly cloudy",
+  weatherCloudy: "Cloudy",
+  weatherFog: "Fog",
+  weatherDrizzle: "Drizzle",
+  weatherRain: "Rain",
+  weatherSnow: "Snow",
+  weatherStorm: "Thunderstorm",
 };
 
 type Strings = typeof en;
@@ -401,6 +414,19 @@ const fr: Strings = {
   download: "Télécharger",
   openInBrowser: "Ouvrir dans le navigateur",
   close: "Fermer",
+  weather: "Météo",
+  showWeather: "Afficher la météo à côté de chaque jour",
+  weatherHint: "Prévisions quotidiennes depuis le serveur de planification.",
+  weatherCity: "Lieu",
+  weatherServerNeeded: "Nécessite le serveur de planification (Réglages → Serveur).",
+  weatherClear: "Ensoleillé",
+  weatherPartly: "Partiellement nuageux",
+  weatherCloudy: "Nuageux",
+  weatherFog: "Brouillard",
+  weatherDrizzle: "Bruine",
+  weatherRain: "Pluie",
+  weatherSnow: "Neige",
+  weatherStorm: "Orage",
 };
 
 export type Lang = "en" | "fr";

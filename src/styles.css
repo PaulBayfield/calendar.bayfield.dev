@@ -826,6 +826,21 @@ textarea:disabled {
   color: var(--on-accent);
   padding: 0 4px;
 }
+.day-weather {
+  display: inline-flex;
+  margin-left: 2px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.day-weather.clear,
+.day-weather.partly {
+  color: #e0a526;
+}
+.day-weather.rain,
+.day-weather.drizzle,
+.day-weather.storm {
+  color: #4a8fd9;
+}
 
 .allday {
   border-bottom: 1px solid var(--border-strong);
@@ -1992,6 +2007,16 @@ textarea:disabled {
   .day-head .date {
     font-size: 15px;
     font-weight: 600;
+  }
+  /* Stacked header: tuck the weather into the corner instead of a third row. */
+  .day-head {
+    position: relative;
+  }
+  .day-weather {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    margin: 0;
   }
   .allday-label {
     font-size: 0; /* No room for the words; the row speaks for itself. */

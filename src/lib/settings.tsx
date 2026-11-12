@@ -31,6 +31,10 @@ export interface Settings {
   notifications: boolean;
   /** Desktop: the close button hides the window to the tray instead of quitting. */
   closeToTray: boolean;
+  /** Weather icon next to each day, from the scheduling server. */
+  weather: boolean;
+  /** City whose weather is shown; empty means the first one the server knows. */
+  weatherCity: string;
   /** A new version the user chose not to be told about again. */
   skippedUpdate: string;
 }
@@ -56,6 +60,8 @@ const DEFAULTS: Settings = {
   notifications: true,
   closeToTray: true,
   skippedUpdate: "",
+  weather: false,
+  weatherCity: "",
 };
 
 function load(): Settings {

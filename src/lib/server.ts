@@ -37,6 +37,16 @@ export interface ScheduleLink {
   bookings: Booking[];
 }
 
+export interface WeatherDay {
+  city: string;
+  /** Local calendar day, YYYY-MM-DD. */
+  date: string;
+  max: number | null;
+  min: number | null;
+  precipitation: number | null;
+  code: number | null;
+}
+
 export interface ServerStatus {
   connected: boolean;
   email?: string;
@@ -64,6 +74,8 @@ async function call<T>(base: string, path: string, init: RequestInit = {}): Prom
 }
 
 export const getServerStatus = (base: string) => call<ServerStatus>(base, "/api/status");
+
+export const getWeather = (base: string) => call<WeatherDay[]>(base, "/api/weather");
 
 export const getConnectUrl = (base: string) => call<{ url: string }>(base, "/api/google/connect", { method: "POST" });
 

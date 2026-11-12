@@ -63,6 +63,10 @@ const CORS_ORIGINS = new Set(
  */
 const CLIENT_IP_HEADER = process.env.CLIENT_IP_HEADER?.toLowerCase();
 
+/** Datawarehouse that serves daily weather per city; the key stays here, never in the app bundle. */
+const DW_API_URL = (process.env.DW_API_URL ?? "https://dash.bayfield.dev").replace(/\/+$/, "");
+const DW_API_KEY = process.env.DW_API_KEY ?? "";
+
 const MIN_NOTICE_MS = 15 * 60_000;
 const store = openStore(DATA_DIR);
 
@@ -113,6 +117,68 @@ async function availableStarts(link: Link): Promise<string[]> {
     for (let t = w.start; t + duration <= w.end; t += step)
       if (t >= now && !busy.some((b) => b.start < t + duration && b.end > t)) starts.add(t);
   return [...starts].sort((a, b) => a - b).map((t) => new Date(t).toISOString());
+}
+
+// --- Weather ---
+
+interface WeatherDay {
+  city: string;
+  /** Local calendar day, YYYY-MM-DD. */
+  date: string;
+  max: number | null;
+  min: number | null;
+  precipitation: number | null;
+  code: number | null;
+}
+
+const WEATHER_TTL_MS = 30 * 60_000;
+let weatherCache: { at: number; days: WeatherDay[] } | null = null;
+let weatherInflight: Promise<WeatherDay[]> | null = null;
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+async function fetchWeather(): Promise<WeatherDay[]> {
+  const res = await fetch(`${DW_API_URL}/api/services/weather/daily`, {
+    headers: { "X-API-Key": DW_API_KEY },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Weather source answered ${res.status}`);
+  const rows: unknown = await res.json();
+  if (!Array.isArray(rows)) throw new Error("Unexpected weather data");
+  const days = new Map<string, WeatherDay>();
+  for (const r of rows) {
+    const t = Date.parse(r?.date);
+    if (typeof r?.city !== "string" || Number.isNaN(t)) continue;
+    // Days are stamped at local midnight in UTC (e.g. 23:00Z the day before for Paris);
+    // shifting by 12h lands on the right calendar day for any zone from UTC-12 to UTC+11.
+    const date = new Date(t + 12 * 60 * 60_000).toISOString().slice(0, 10);
+    days.set(`${r.city}|${date}`, {
+      city: r.city,
+      date,
+      max: num(r.temperature_max),
+      min: num(r.temperature_min),
+      precipitation: num(r.precipitation_sum),
+      code: num(r.weather_code),
+    });
+  }
+  return [...days.values()];
+}
+
+async function weather(): Promise<WeatherDay[]> {
+  if (weatherCache && weatherCache.at + WEATHER_TTL_MS > Date.now()) return weatherCache.days;
+  weatherInflight ??= fetchWeather()
+    .then((days) => {
+      weatherCache = { at: Date.now(), days };
+      return days;
+    })
+    .finally(() => (weatherInflight = null));
+  try {
+    return await weatherInflight;
+  } catch (e) {
+    // Better slightly stale than nothing while the source is down.
+    if (weatherCache) return weatherCache.days;
+    throw e;
+  }
 }
 
 // --- Request helpers ---
@@ -260,6 +326,16 @@ app.get("/api/google/callback", async (c) => {
   store.set("google_email", info.email);
   ownerToken = { value: token.access_token, expiresAt: Date.now() + token.expires_in * 1000 };
   return page("Scheduling server connected. You can close this tab.");
+});
+
+app.get("/api/weather", requireOwner, async (c) => {
+  if (!DW_API_KEY) return c.json({ error: "Weather isn't configured on the server (DW_API_KEY)" }, 503);
+  try {
+    return c.json(await weather());
+  } catch (e) {
+    console.warn("Weather fetch failed:", (e as Error).message);
+    return c.json({ error: "Couldn't load the weather" }, 502);
+  }
 });
 
 app.get("/api/links", requireOwner, (c) => c.json(store.listLinks().map(linkView)));

@@ -8,6 +8,7 @@ import type { StringKey } from "../lib/i18n";
 import { getAutostart, setAutostart } from "../lib/desktop";
 import { notificationPermission, type NotificationPermission } from "../lib/reminders";
 import { APP_VERSION, RELEASES_URL, useUpdateCheck } from "../lib/updates";
+import { useWeatherData, weatherCities } from "../lib/weather";
 import { ShortcutList } from "./Shortcuts";
 import { Bell, Globe, Info, Keyboard, Sliders, X } from "./icons";
 
@@ -181,7 +182,40 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
           </select>
         </Row>
       </section>
+      <WeatherSection />
     </>
+  );
+}
+
+function WeatherSection() {
+  const { t, settings, update } = useSettings();
+  const { days, error } = useWeatherData(settings.weather);
+  const base = serverBase(settings.serverUrl);
+  const cities = days ? weatherCities(days) : [];
+  // Keep showing a saved city the server no longer lists, rather than silently switching.
+  if (settings.weatherCity && days && !cities.includes(settings.weatherCity)) cities.unshift(settings.weatherCity);
+
+  return (
+    <section className="settings-rows">
+      <h3>{t("weather")}</h3>
+      <Row label={t("showWeather")} hint={!base ? t("weatherServerNeeded") : (error ?? t("weatherHint"))}>
+        <Switch checked={settings.weather} disabled={!base} onChange={(on) => update({ weather: on })} />
+      </Row>
+      <Row label={t("weatherCity")} disabled={!settings.weather || !days}>
+        <select
+          value={settings.weatherCity || cities[0] || ""}
+          disabled={!settings.weather || cities.length === 0}
+          onChange={(e) => update({ weatherCity: e.target.value })}
+        >
+          {cities.length === 0 && <option value="">{settings.weather && !error ? t("checking") : "—"}</option>}
+          {cities.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </Row>
+    </section>
   );
 }
 
