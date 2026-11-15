@@ -39,6 +39,8 @@ import { Shortcuts } from "./components/Shortcuts";
 import { SettingsDialog, type SettingsPage } from "./components/SettingsDialog";
 import { ContextMenu, type MenuTarget } from "./components/ContextMenu";
 import { appMenuFor } from "./lib/appMenu";
+import { isNetworkError } from "./lib/network";
+import { ErrorStack, useErrors } from "./components/Errors";
 import { SelectionBar } from "./components/SelectionBar";
 import { RecurrenceDialog } from "./components/RecurrenceDialog";
 import { SearchDialog } from "./components/SearchDialog";
@@ -47,6 +49,14 @@ import { SearchDialog } from "./components/SearchDialog";
 const REFRESH_MS = 60 * 1000;
 /** Coming back to the app refetches if the data is older than this. */
 const FOCUS_REFRESH_MS = 15 * 1000;
+/** A clock tick this late means the computer was asleep. */
+const WAKE_GAP_MS = 90_000;
+/** After waking, the network needs a moment before requests can succeed. */
+const WAKE_DELAY_MS = 4_000;
+/** Load errors this soon after waking are treated as the connection coming back. */
+const WAKE_GRACE_MS = 60_000;
+/** How often to retry while offline. */
+const RETRY_MS = 15_000;
 const HISTORY_LIMIT = 100;
 
 /** One undoable step: how to reverse it, and how to apply it again. */
@@ -89,11 +99,17 @@ function Root() {
   useDesktopSync(settings.closeToTray, t);
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string | null>(null);
+  const errors = useErrors();
 
-  const handleError = useCallback((e: unknown) => {
-    if (e instanceof AuthRequiredError) setStatus("signedOut");
-    else setError(e instanceof Error ? e.message : String(e));
-  }, []);
+  const handleError = useCallback(
+    (e: unknown) => {
+      if (e instanceof AuthRequiredError) return setStatus("signedOut");
+      const message = isNetworkError(e) ? t("connectionError") : e instanceof Error ? e.message : String(e);
+      setError(message);
+      errors.push(message);
+    },
+    [t, errors.push],
+  );
 
   useEffect(() => {
     restoreSession()
@@ -121,15 +137,16 @@ function Root() {
       />
     );
   return (
-    <CalendarApp
-      onError={handleError}
-      error={error}
-      onDismissError={() => setError(null)}
-      onSignOut={async () => {
-        await signOut().catch(handleError);
-        setStatus("signedOut");
-      }}
-    />
+    <>
+      <CalendarApp
+        onError={handleError}
+        onSignOut={async () => {
+          await signOut().catch(handleError);
+          setStatus("signedOut");
+        }}
+      />
+      <ErrorStack errors={errors.errors} onDismiss={errors.dismiss} />
+    </>
   );
 }
 
@@ -167,8 +184,6 @@ function SignIn({ error, onSignIn }: { error: string | null; onSignIn: () => Pro
 
 interface CalendarAppProps {
   onError: (e: unknown) => void;
-  error: string | null;
-  onDismissError: () => void;
   onSignOut: () => void;
 }
 
@@ -190,7 +205,7 @@ function sameCalendars(a: Calendar[], b: Calendar[]): boolean {
 }
 const calendarLabel = (c: Calendar) => c.summaryOverride ?? c.summary;
 
-function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppProps) {
+function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   const { t, f, settings, update } = useSettings();
   const mobile = useMediaQuery(MOBILE_QUERY);
   const maxDays = mobile ? 7 : MAX_DAYS;
@@ -214,6 +229,20 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
   const [chunks, setChunks] = useState<Record<string, CalEvent[]>>({});
   const [pending, setPending] = useState(0);
   const [refreshTick, setRefreshTick] = useState(0);
+  /** Background loads are failing because the connection is down (or still coming back after sleep). */
+  const [offline, setOffline] = useState(false);
+  const wokeAt = useRef(0);
+  /**
+   * Errors from background loads: while the connection is down, or in the minute after waking up,
+   * they only show "reconnecting" and are retried. Anything else is shown as usual.
+   */
+  const onLoadError = useCallback(
+    (e: unknown) => {
+      if (isNetworkError(e) || (Date.now() - wokeAt.current < WAKE_GRACE_MS && !(e instanceof AuthRequiredError))) setOffline(true);
+      else onError(e);
+    },
+    [onError],
+  );
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<CalEvent | null>(null);
   const [scheduling, setScheduling] = useState(false);
@@ -266,12 +295,24 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
 
   // Clock for the now-line, plus periodic and on-focus refreshes.
   useEffect(() => {
-    const clock = setInterval(() => setNow(new Date()), 30_000);
-    let lastRefresh = Date.now();
+    let lastBeat = Date.now();
+    let wakeTimer: ReturnType<typeof setTimeout> | undefined;
     const tick = () => {
       lastRefresh = Date.now();
       setRefreshTick((n) => n + 1);
     };
+    const clock = setInterval(() => {
+      setNow(new Date());
+      // The interval stops while the computer sleeps: a long gap means it just woke up. Give the
+      // network a few seconds to come back before refreshing.
+      if (Date.now() - lastBeat > WAKE_GAP_MS) {
+        wokeAt.current = Date.now();
+        clearTimeout(wakeTimer);
+        wakeTimer = setTimeout(tick, WAKE_DELAY_MS);
+      }
+      lastBeat = Date.now();
+    }, 30_000);
+    let lastRefresh = Date.now();
     // Hidden tabs and minimised windows don't poll; they catch up when shown again.
     const refresh = setInterval(() => document.visibilityState === "visible" && tick(), REFRESH_MS);
     const onFocus = () => {
@@ -282,7 +323,10 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("online", tick);
     return () => {
+      clearTimeout(wakeTimer);
+      window.removeEventListener("online", tick);
       clearInterval(clock);
       clearInterval(refresh);
       window.removeEventListener("focus", onFocus);
@@ -292,9 +336,19 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
 
   useEffect(() => {
     listCalendars()
-      .then((next) => setCalendars((prev) => (sameCalendars(prev, next) ? prev : next)))
-      .catch(onError);
-  }, [onError, refreshTick]);
+      .then((next) => {
+        setOffline(false);
+        setCalendars((prev) => (sameCalendars(prev, next) ? prev : next));
+      })
+      .catch(onLoadError);
+  }, [onLoadError, refreshTick]);
+
+  // While offline, try again every little while (and at once when the browser says it's back).
+  useEffect(() => {
+    if (!offline) return;
+    const retry = setInterval(() => setRefreshTick((n) => n + 1), RETRY_MS);
+    return () => clearInterval(retry);
+  }, [offline]);
 
   const loadChunks = useCallback(
     async (keys: string[], force: boolean) => {
@@ -322,10 +376,11 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
       });
       results.forEach((r, i) => r.status === "rejected" && loaded.current.delete(`${todo[i].k}|${todo[i].c.id}`));
       const failed = results.find((r) => r.status === "rejected");
-      if (failed) onError(failed.reason);
+      if (failed) onLoadError(failed.reason);
+      else setOffline(false);
       setPending((n) => n - 1);
     },
-    [shownCalendars, onError],
+    [shownCalendars, onLoadError],
   );
 
   // New calendar list → start over.
@@ -1069,12 +1124,10 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
             </span>
           </div>
         )}
-        {error && (
-          <div className="banner" role="alert">
-            <span>{error}</span>
-            <button className="link-button" onClick={onDismissError}>
-              {t("dismiss")}
-            </button>
+        {offline && (
+          <div className="offline-pill" role="status">
+            <span className="offline-dot" />
+            {t("reconnecting")}
           </div>
         )}
         <WeekView

@@ -2771,3 +2771,92 @@ textarea:disabled {
 :root[data-privacy] .link-card:hover .link-title {
   filter: none;
 }
+
+/* ---------- Errors and connection ---------- */
+
+.error-stack {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.error-card {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-strong));
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: error-in 140ms ease-out;
+}
+.error-card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 19px;
+  color: var(--accent);
+}
+.error-card-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.error-card-count {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.error-card .icon-button {
+  flex: none;
+  margin-top: -2px;
+}
+@keyframes error-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+/* Background loads failing while the connection is down: a quiet note, not an error. */
+.offline-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 800;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.offline-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e0a030;
+  animation: offline-pulse 1.4s ease-in-out infinite;
+}
+@keyframes offline-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
