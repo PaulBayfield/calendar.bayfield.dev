@@ -6,8 +6,15 @@ import { CalendarIcon, Check, ChevronRight, ClipboardPaste, Compose, Copy, CopyP
 
 const MARGIN = 8;
 
+/** A plain entry of the app-wide menu (text fields, links, the rest of the window). */
+export type AppMenuEntry = { label: string; icon?: ReactNode; shortcut?: string; disabled?: boolean; onClick: () => void } | "separator";
+
 /** Where the menu was opened, and on what. */
-export type MenuTarget = { x: number; y: number } & ({ kind: "event"; ev: CalEvent } | { kind: "slot"; time: Date });
+export type MenuTarget = { x: number; y: number } & (
+  | { kind: "event"; ev: CalEvent }
+  | { kind: "slot"; time: Date }
+  | { kind: "app"; entries: AppMenuEntry[] }
+);
 
 export interface MenuActions {
   canPaste: boolean;
@@ -71,7 +78,15 @@ export function ContextMenu({ target, onClose, ...a }: MenuActions & { target: M
   };
 
   let body: ReactNode;
-  if (target.kind === "slot") {
+  if (target.kind === "app") {
+    body = target.entries.map((e, i) =>
+      e === "separator" ? (
+        <div key={i} className="menu-separator" />
+      ) : (
+        <Item key={i} icon={e.icon ?? null} label={e.label} shortcut={e.shortcut} disabled={e.disabled} onClick={run(e.onClick)} />
+      ),
+    );
+  } else if (target.kind === "slot") {
     const { time } = target;
     body = (
       <>

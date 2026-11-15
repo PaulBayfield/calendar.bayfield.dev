@@ -38,6 +38,7 @@ import { SchedulePanel } from "./components/SchedulePanel";
 import { Shortcuts } from "./components/Shortcuts";
 import { SettingsDialog, type SettingsPage } from "./components/SettingsDialog";
 import { ContextMenu, type MenuTarget } from "./components/ContextMenu";
+import { appMenuFor } from "./lib/appMenu";
 import { SelectionBar } from "./components/SelectionBar";
 import { RecurrenceDialog } from "./components/RecurrenceDialog";
 import { SearchDialog } from "./components/SearchDialog";
@@ -980,6 +981,21 @@ function CalendarApp({ onError, error, onDismissError, onSignOut }: CalendarAppP
     window.addEventListener("keydown", onKey, { capture: true });
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, []);
+
+  // Right-clicks that events and the grid didn't take get the app's menu, not the native one.
+  const appMenuRef = useRef({ onNewEvent: newEventNow, onToday: goToday });
+  appMenuRef.current = { onNewEvent: newEventNow, onToday: goToday };
+  useEffect(() => {
+    const onContext = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.shiftKey || !(e.target instanceof Element) || e.target.closest(".context-menu")) return;
+      const entries = appMenuFor(e.target, { t, ...appMenuRef.current });
+      if (!entries) return;
+      e.preventDefault();
+      setMenu({ kind: "app", entries, x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("contextmenu", onContext);
+    return () => window.removeEventListener("contextmenu", onContext);
+  }, [t]);
 
   const account = calendars.find((c) => c.primary)?.id;
   // On narrow windows the panel overlays the grid, so only open it on demand.
