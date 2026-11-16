@@ -44,6 +44,7 @@ import { ErrorStack, useErrors } from "./components/Errors";
 import { SelectionBar } from "./components/SelectionBar";
 import { RecurrenceDialog } from "./components/RecurrenceDialog";
 import { SearchDialog } from "./components/SearchDialog";
+import { usePrefsSync } from "./lib/prefs";
 
 /** How often to pick up changes made elsewhere, while the app is visible. */
 const REFRESH_MS = 60 * 1000;
@@ -207,6 +208,8 @@ const calendarLabel = (c: Calendar) => c.summaryOverride ?? c.summary;
 
 function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   const { t, f, settings, update } = useSettings();
+  // Shared with the other bayfield.dev apps (prefs.bayfield.dev).
+  usePrefsSync({ theme: settings.theme, language: settings.language, timeFormat: settings.timeFormat, weekStartsOn: settings.weekStartsOn }, update);
   const mobile = useMediaQuery(MOBILE_QUERY);
   const maxDays = mobile ? 7 : MAX_DAYS;
   const days = Math.min(maxDays, Math.max(1, mobile ? settings.mobileDays : settings.days));

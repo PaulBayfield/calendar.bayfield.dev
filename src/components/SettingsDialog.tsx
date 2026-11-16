@@ -10,6 +10,7 @@ import { notificationPermission, type NotificationPermission } from "../lib/remi
 import { APP_VERSION, canInstallUpdates, installStatus, RELEASES_URL, useInstallUpdate, useUpdateCheck } from "../lib/updates";
 import { useWeatherData } from "../lib/weather";
 import { ShortcutList } from "./Shortcuts";
+import { connectPrefs, disconnectPrefs, usePrefsStatus } from "../lib/prefs";
 import { Bell, Globe, Info, Keyboard, Sliders, X } from "./icons";
 
 const THEMES: { id: Theme; label: StringKey }[] = [
@@ -101,6 +102,36 @@ function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: (
   return <input type="checkbox" className="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />;
 }
 
+/** Theme, language, week start and time format shared with the other bayfield.dev apps (prefs.bayfield.dev). */
+function PrefsSyncRow() {
+  const { t } = useSettings();
+  const { status, email } = usePrefsStatus();
+  const hint =
+    status === "connected"
+      ? t("prefsConnected", { email: email ?? "" })
+      : status === "connecting"
+        ? t("prefsApprove")
+        : status === "offline"
+          ? t("prefsOffline")
+          : t("prefsHint");
+  return (
+    <section className="settings-rows">
+      <h3>{t("prefsTitle")}</h3>
+      <Row label={t("prefsLabel")} hint={hint}>
+        {status === "connected" ? (
+          <button className="text-button" onClick={() => void disconnectPrefs()}>
+            {t("prefsDisconnect")}
+          </button>
+        ) : status === "disconnected" || status === "connecting" ? (
+          <button className="primary-button" onClick={() => void connectPrefs("Calendar")}>
+            {t("prefsConnect")}
+          </button>
+        ) : null}
+      </Row>
+    </section>
+  );
+}
+
 function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
   const { t, settings, update } = useSettings();
 
@@ -157,6 +188,7 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
           ])}
         </Row>
       </section>
+      <PrefsSyncRow />
       <section className="settings-rows">
         <h3>{t("events")}</h3>
         <Row label={t("eventDetails")}>

@@ -5,6 +5,7 @@
 //! macOS Keychain, Secret Service on Linux); the webview only ever sees short-lived
 //! access tokens.
 
+mod prefs;
 mod shell;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -288,6 +289,9 @@ pub fn run() {
             google_sign_in,
             google_access_token,
             google_sign_out,
+            prefs::prefs_token_get,
+            prefs::prefs_token_set,
+            prefs::prefs_computer_name,
             shell::set_close_to_tray,
             shell::set_tray_labels,
             shell::set_tray_events

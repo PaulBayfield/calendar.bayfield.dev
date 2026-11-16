@@ -1,0 +1,329 @@
+// Preferences shared with the other bayfield.dev apps, through prefs.bayfield.dev (the same file
+// in every app). Each app keeps its own settings as before; the shared ones are also sent there
+// when they change here, and changed here when they change in another app.
+//
+//  - Browser: prefs.bayfield.dev's cookie (same site as every *.bayfield.dev app).
+//  - Desktop: a computer's token, approved once in the browser and kept in the OS credential
+//    store (shared by the desktop apps on that computer): Rust commands prefs_token_get/_set.
+//
+// No server of the app is involved, and no API key: it's the person's own session.
+
+import { useEffect, useRef, useSyncExternalStore } from "react";
+
+export const PREFS_URL: string = (import.meta.env.VITE_PREFS_URL as string | undefined) ?? "https://prefs.bayfield.dev";
+
+/** The shared preferences (as in prefs.bayfield.dev's server/src/catalog.ts). */
+export interface SharedPrefs {
+  theme: "system" | "light" | "dark" | "rosepine" | "rosepine-dawn";
+  language: "auto" | "en" | "fr";
+  timeFormat: "auto" | "24h" | "12h";
+  durationStyle: "long" | "short" | "decimal";
+  globe: boolean;
+  distanceUnit: "km" | "mi";
+  weekStartsOn: 0 | 1;
+  timeZone: string;
+}
+export type PrefKey = keyof SharedPrefs;
+type Values = Partial<SharedPrefs>;
+
+interface Remote {
+  values: Values;
+  updatedAt: Partial<Record<PrefKey, number>>;
+}
+
+const isTauri = "__TAURI_INTERNALS__" in window;
+/** What this app last saw of each shared value, and when it changed (survives reloads). */
+const META_KEY = "bayfield.prefs.meta";
+
+interface Meta {
+  known: Values;
+  updatedAt: Partial<Record<PrefKey, number>>;
+}
+
+function loadMeta(): Meta {
+  try {
+    const m = JSON.parse(localStorage.getItem(META_KEY) ?? "{}") as Partial<Meta>;
+    return { known: m.known ?? {}, updatedAt: m.updatedAt ?? {} };
+  } catch {
+    return { known: {}, updatedAt: {} };
+  }
+}
+
+function saveMeta(m: Meta) {
+  try {
+    localStorage.setItem(META_KEY, JSON.stringify(m));
+  } catch {
+    // Not critical: at worst a value is sent again.
+  }
+}
+
+// ---------- Connection state (for the Settings row) ----------
+
+export type PrefsStatus = "checking" | "connected" | "disconnected" | "connecting" | "offline";
+
+interface State {
+  status: PrefsStatus;
+  email: string | null;
+}
+
+let state: State = { status: "checking", email: null };
+const watchers = new Set<() => void>();
+function setState(patch: Partial<State>) {
+  state = { ...state, ...patch };
+  watchers.forEach((w) => w());
+}
+
+/** The connection, for a "Sync my preferences" row. */
+export function usePrefsStatus(): State {
+  return useSyncExternalStore(
+    (w) => {
+      watchers.add(w);
+      return () => watchers.delete(w);
+    },
+    () => state,
+  );
+}
+
+// ---------- Talking to prefs.bayfield.dev ----------
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<T>(cmd, args);
+}
+
+/** Desktop: the computer's token, if it was connected. */
+async function deviceToken(): Promise<string | null> {
+  if (!isTauri) return null;
+  try {
+    return await invoke<string | null>("prefs_token_get");
+  } catch {
+    return null;
+  }
+}
+
+class Unauthorized extends Error {}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await deviceToken();
+  if (isTauri && !token) throw new Unauthorized();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (init.body) headers.set("Content-Type", "application/json");
+  const res = await fetch(`${PREFS_URL}${path}`, { ...init, headers, credentials: isTauri ? "omit" : "include" });
+  if (res.status === 401) throw new Unauthorized();
+  if (!res.ok) throw new Error(`prefs.bayfield.dev answered ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+// ---------- Connecting ----------
+
+const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+async function sha256Hex(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+let linking: AbortController | null = null;
+
+/**
+ * Connects this browser (a trip through prefs.bayfield.dev and back) or this computer (approved
+ * in the browser; the app waits for it). `appName` names it in the list there, with the
+ * computer's name: "Notes on PAUL-PC".
+ */
+export async function connectPrefs(appName: string): Promise<void> {
+  if (!isTauri) {
+    location.href = `${PREFS_URL}/api/auth/login?return=${encodeURIComponent(location.href)}`;
+    return;
+  }
+  linking?.abort();
+  const abort = new AbortController();
+  linking = abort;
+  const secret = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const computer = await invoke<string>("prefs_computer_name").catch(() => "");
+  const name = computer ? `${appName} on ${computer}` : appName;
+  const url = `${PREFS_URL}/link?challenge=${await sha256Hex(secret)}&name=${encodeURIComponent(name)}`;
+  const { openUrl } = await import("@tauri-apps/plugin-opener");
+  await openUrl(url);
+  setState({ status: "connecting" });
+  // Up to 10 minutes for the approval, asking every 2 seconds.
+  for (let i = 0; i < 300 && !abort.signal.aborted; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const res = await fetch(`${PREFS_URL}/v1/link/claim`, { headers: { "X-Link-Secret": secret }, signal: abort.signal }).catch(() => null);
+    if (!res?.ok) continue;
+    const { token } = (await res.json()) as { token: string };
+    await invoke("prefs_token_set", { token });
+    linking = null;
+    reconnect();
+    return;
+  }
+  if (!abort.signal.aborted) setState({ status: "disconnected" });
+}
+
+/** Signs this browser (every app in it) or this computer (its desktop apps) out of the sync. */
+export async function disconnectPrefs(): Promise<void> {
+  linking?.abort();
+  await request("/api/auth/logout", { method: "POST" }).catch(() => {});
+  if (isTauri) await invoke("prefs_token_set", { token: null }).catch(() => {});
+  stopEvents();
+  setState({ status: "disconnected", email: null });
+}
+
+// ---------- Syncing ----------
+
+let reconnect: () => void = () => {};
+let stopEvents: () => void = () => {};
+
+const same = (a: unknown, b: unknown) => a === b;
+
+/**
+ * Keeps the app's shared settings in step with prefs.bayfield.dev. Call once, at the top of the
+ * app: `values` are the app's current values for the shared keys it has (others omitted), and
+ * `apply` changes them (some may be kept on the app's own server: gps' time zone, say).
+ */
+export function usePrefsSync(values: Values, apply: (patch: Values) => void) {
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
+  const applyRef = useRef(apply);
+  applyRef.current = apply;
+  const meta = useRef<Meta>(loadMeta());
+  const pending = useRef<Values>({});
+  const connected = useRef(false);
+
+  // Sends what changed here and hasn't been sent; takes in what's newer there.
+  const flush = useRef(async () => {});
+  flush.current = async () => {
+    const keys = Object.keys(pending.current) as PrefKey[];
+    if (!keys.length || !connected.current) return;
+    const body: Record<string, { value: unknown; updatedAt: number }> = {};
+    for (const k of keys) body[k] = { value: pending.current[k], updatedAt: meta.current.updatedAt[k] ?? Date.now() };
+    try {
+      const remote = await request<Remote>("/v1/preferences", { method: "PUT", body: JSON.stringify(body) });
+      for (const k of keys) if (same(pending.current[k], body[k].value)) delete pending.current[k];
+      take(remote);
+    } catch (e) {
+      if (e instanceof Unauthorized) setState({ status: "disconnected" });
+      else setState({ status: "offline" });
+    }
+  };
+
+  /** Applies the values that are newer there than here. */
+  const take = (remote: Remote) => {
+    const patch: Values = {};
+    for (const k of Object.keys(valuesRef.current) as PrefKey[]) {
+      const at = remote.updatedAt[k];
+      if (at === undefined || remote.values[k] === undefined) continue;
+      if (at <= (meta.current.updatedAt[k] ?? 0) || k in pending.current) continue;
+      meta.current.updatedAt[k] = at;
+      meta.current.known[k] = remote.values[k] as never;
+      if (!same(valuesRef.current[k], remote.values[k])) (patch as Record<string, unknown>)[k] = remote.values[k];
+    }
+    saveMeta(meta.current);
+    if (Object.keys(patch).length) applyRef.current(patch);
+  };
+
+  // A shared value changed here (in this app's own settings): stamp it and send it.
+  const signature = JSON.stringify(values);
+  useEffect(() => {
+    let changed = false;
+    for (const k of Object.keys(values) as PrefKey[]) {
+      const v = values[k];
+      if (v === undefined || same(meta.current.known[k], v)) continue;
+      // The first time this app syncs a key, its value only fills a gap: it doesn't beat what
+      // the other apps already chose (dated 0, any stored change is newer).
+      const first = !(k in meta.current.known);
+      meta.current.known[k] = v as never;
+      meta.current.updatedAt[k] = first ? 0 : Date.now();
+      (pending.current as Record<string, unknown>)[k] = v;
+      changed = true;
+    }
+    if (changed) {
+      saveMeta(meta.current);
+      void flush.current();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retry = 0;
+    let events: AbortController | null = null;
+
+    const listen = async () => {
+      events?.abort();
+      const abort = new AbortController();
+      events = abort;
+      try {
+        const token = await deviceToken();
+        const res = await fetch(`${PREFS_URL}/v1/events`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: isTauri ? "omit" : "include",
+          signal: abort.signal,
+        });
+        if (res.status === 401) return setState({ status: "disconnected" });
+        if (!res.ok || !res.body) throw new Error(String(res.status));
+        retry = 0;
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = "";
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+          let end: number;
+          while ((end = buffer.indexOf("\n\n")) >= 0) {
+            const block = buffer.slice(0, end);
+            buffer = buffer.slice(end + 2);
+            const data = block
+              .split("\n")
+              .filter((l) => l.startsWith("data:"))
+              .map((l) => l.slice(5).trimStart())
+              .join("\n");
+            if (/^event: ?preferences$/m.test(block) && data) take(JSON.parse(data) as Remote);
+          }
+        }
+      } catch {
+        if (abort.signal.aborted) return;
+      }
+      if (cancelled || abort.signal.aborted) return;
+      // Dropped (sleep, network): try again, waiting longer each time, up to a minute.
+      retry = Math.min(retry + 1, 6);
+      setTimeout(() => !cancelled && void start(), 1000 * 2 ** retry);
+    };
+
+    const start = async () => {
+      try {
+        const me = await request<{ email: string | null; name: string }>("/v1/me");
+        if (cancelled) return;
+        connected.current = true;
+        setState({ status: "connected", email: me.email ?? me.name });
+        take(await request<Remote>("/v1/preferences"));
+        await flush.current();
+        void listen();
+      } catch (e) {
+        connected.current = false;
+        if (cancelled) return;
+        if (e instanceof Unauthorized) setState({ status: "disconnected", email: null });
+        else {
+          setState({ status: "offline" });
+          retry = Math.min(retry + 1, 6);
+          setTimeout(() => !cancelled && void start(), 1000 * 2 ** retry);
+        }
+      }
+    };
+
+    reconnect = () => void start();
+    stopEvents = () => {
+      connected.current = false;
+      events?.abort();
+    };
+    void start();
+    // Back to the window: catch up (the live stream may have been cut while asleep).
+    const onFocus = () => connected.current && void request<Remote>("/v1/preferences").then(take, () => {});
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      events?.abort();
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+}
