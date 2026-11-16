@@ -38,7 +38,6 @@ export function Toolbar(p: Props) {
       </h1>
       {p.loading && <span className="spinner" aria-label="Loading" />}
       <div className="toolbar-spacer" data-tauri-drag-region />
-      <AccountMenu account={p.account} onOpenSettings={p.onOpenSettings} onSignOut={p.onSignOut} />
       <DaysMenu days={p.days} max={p.maxDays} onDays={p.onDays} />
       <button className="text-button" onClick={p.onToday} title={`${t("today")} (T)`}>
         {t("today")}
@@ -52,6 +51,7 @@ export function Toolbar(p: Props) {
         </button>
       </div>
       <PrivacyToggle />
+      <AccountMenu account={p.account} onOpenSettings={p.onOpenSettings} onSignOut={p.onSignOut} />
       <button
         className={`icon-button panel-toggle${p.panelVisible ? " active" : ""}`}
         title={`${t("togglePanel")} (.)`}
