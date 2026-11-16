@@ -4,7 +4,9 @@
 //
 //  - Browser: prefs.bayfield.dev's cookie (same site as every *.bayfield.dev app).
 //  - Desktop: a computer's token, approved once in the browser and kept in the OS credential
-//    store (shared by the desktop apps on that computer): Rust commands prefs_token_get/_set.
+//    store (shared by the desktop apps on that computer): Rust commands prefs_token_get/_set
+//    (src-tauri/src/prefs.rs). Desktop apps hand this file their Tauri functions at startup
+//    (registerPrefsDesktop), so it builds in web-only apps too.
 //
 // No server of the app is involved, and no API key: it's the person's own session.
 
@@ -31,7 +33,20 @@ interface Remote {
   updatedAt: Partial<Record<PrefKey, number>>;
 }
 
-const isTauri = "__TAURI_INTERNALS__" in window;
+/** What a desktop app gives this file (from @tauri-apps/api/core and @tauri-apps/plugin-opener). */
+export interface PrefsDesktop {
+  invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+  openUrl: (url: string) => Promise<void>;
+}
+
+let desktop: PrefsDesktop | null = null;
+
+/** Desktop apps: call once at startup, before rendering. */
+export function registerPrefsDesktop(d: PrefsDesktop) {
+  desktop = d;
+}
+
+const isDesktop = () => desktop !== null;
 /** What this app last saw of each shared value, and when it changed (survives reloads). */
 const META_KEY = "bayfield.prefs.meta";
 
@@ -87,13 +102,13 @@ export function usePrefsStatus(): State {
 // ---------- Talking to prefs.bayfield.dev ----------
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(cmd, args);
+  if (!desktop) throw new Error("Not the desktop app");
+  return desktop.invoke<T>(cmd, args);
 }
 
 /** Desktop: the computer's token, if it was connected. */
 async function deviceToken(): Promise<string | null> {
-  if (!isTauri) return null;
+  if (!isDesktop()) return null;
   try {
     return await invoke<string | null>("prefs_token_get");
   } catch {
@@ -105,11 +120,11 @@ class Unauthorized extends Error {}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await deviceToken();
-  if (isTauri && !token) throw new Unauthorized();
+  if (isDesktop() && !token) throw new Unauthorized();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body) headers.set("Content-Type", "application/json");
-  const res = await fetch(`${PREFS_URL}${path}`, { ...init, headers, credentials: isTauri ? "omit" : "include" });
+  const res = await fetch(`${PREFS_URL}${path}`, { ...init, headers, credentials: isDesktop() ? "omit" : "include" });
   if (res.status === 401) throw new Unauthorized();
   if (!res.ok) throw new Error(`prefs.bayfield.dev answered ${res.status}`);
   return res.json() as Promise<T>;
@@ -132,7 +147,7 @@ let linking: AbortController | null = null;
  * computer's name: "Notes on PAUL-PC".
  */
 export async function connectPrefs(appName: string): Promise<void> {
-  if (!isTauri) {
+  if (!isDesktop()) {
     location.href = `${PREFS_URL}/api/auth/login?return=${encodeURIComponent(location.href)}`;
     return;
   }
@@ -143,8 +158,7 @@ export async function connectPrefs(appName: string): Promise<void> {
   const computer = await invoke<string>("prefs_computer_name").catch(() => "");
   const name = computer ? `${appName} on ${computer}` : appName;
   const url = `${PREFS_URL}/link?challenge=${await sha256Hex(secret)}&name=${encodeURIComponent(name)}`;
-  const { openUrl } = await import("@tauri-apps/plugin-opener");
-  await openUrl(url);
+  await desktop!.openUrl(url);
   setState({ status: "connecting" });
   // Up to 10 minutes for the approval, asking every 2 seconds.
   for (let i = 0; i < 300 && !abort.signal.aborted; i++) {
@@ -164,7 +178,7 @@ export async function connectPrefs(appName: string): Promise<void> {
 export async function disconnectPrefs(): Promise<void> {
   linking?.abort();
   await request("/api/auth/logout", { method: "POST" }).catch(() => {});
-  if (isTauri) await invoke("prefs_token_set", { token: null }).catch(() => {});
+  if (isDesktop()) await invoke("prefs_token_set", { token: null }).catch(() => {});
   stopEvents();
   setState({ status: "disconnected", email: null });
 }
@@ -257,7 +271,7 @@ export function usePrefsSync(values: Values, apply: (patch: Values) => void) {
         const token = await deviceToken();
         const res = await fetch(`${PREFS_URL}/v1/events`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
-          credentials: isTauri ? "omit" : "include",
+          credentials: isDesktop() ? "omit" : "include",
           signal: abort.signal,
         });
         if (res.status === 401) return setState({ status: "disconnected" });
