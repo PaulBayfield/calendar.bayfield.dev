@@ -7,7 +7,7 @@ import { openExternal } from "../lib/open";
 import type { StringKey } from "../lib/i18n";
 import { getAutostart, setAutostart } from "../lib/desktop";
 import { notificationPermission, type NotificationPermission } from "../lib/reminders";
-import { APP_VERSION, RELEASES_URL, useUpdateCheck } from "../lib/updates";
+import { APP_VERSION, canInstallUpdates, installStatus, RELEASES_URL, useInstallUpdate, useUpdateCheck } from "../lib/updates";
 import { useWeatherData } from "../lib/weather";
 import { ShortcutList } from "./Shortcuts";
 import { Bell, Globe, Info, Keyboard, Sliders, X } from "./icons";
@@ -355,6 +355,7 @@ function AboutPage() {
   const { t, settings, update } = useSettings();
   const { state, check } = useUpdateCheck(false);
   const release = state.status === "available" ? state.release : null;
+  const installer = useInstallUpdate();
   useEffect(() => {
     void check();
   }, [check]);
@@ -366,7 +367,7 @@ function AboutPage() {
         ? t("upToDate")
         : state.status === "error"
           ? t("updateCheckFailed")
-          : t("updateAvailable", { version: release?.version ?? "" });
+          : (installStatus(t, installer.state) ?? t("updateAvailable", { version: release?.version ?? "" }));
 
   return (
     <>
@@ -381,15 +382,28 @@ function AboutPage() {
               <button className="text-button" onClick={() => openExternal(release.url)}>
                 {t("whatsNew")}
               </button>
-              <button
-                className="primary-button"
-                onClick={() => {
-                  if (settings.skippedUpdate === release.version) update({ skippedUpdate: "" });
-                  openExternal(release.installer ?? release.url);
-                }}
-              >
-                {t("download")}
-              </button>
+              {canInstallUpdates && installer.state.status !== "error" ? (
+                <button
+                  className="primary-button"
+                  disabled={installer.state.status !== "idle"}
+                  onClick={() => {
+                    if (settings.skippedUpdate === release.version) update({ skippedUpdate: "" });
+                    void installer.install();
+                  }}
+                >
+                  {t("installUpdate")}
+                </button>
+              ) : (
+                <button
+                  className="primary-button"
+                  onClick={() => {
+                    if (settings.skippedUpdate === release.version) update({ skippedUpdate: "" });
+                    openExternal(release.installer ?? release.url);
+                  }}
+                >
+                  {t("download")}
+                </button>
+              )}
             </>
           ) : (
             <button className="text-button" disabled={state.status === "checking"} onClick={() => void check()}>

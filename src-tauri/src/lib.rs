@@ -275,7 +275,14 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![shell::MINIMIZED_ARG]),
         ))
-        .setup(|app| Ok(shell::setup(app)?))
+        .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            // Updates install in place over the current version (same folder, shortcuts and
+            // taskbar pin), from the signed artifacts attached to each GitHub release.
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+            Ok(shell::setup(app)?)
+        })
         .on_window_event(shell::on_window_event)
         .invoke_handler(tauri::generate_handler![
             google_sign_in,

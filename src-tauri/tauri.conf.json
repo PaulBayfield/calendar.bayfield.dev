@@ -34,6 +34,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVCQjU0RkY4NzExNTg4OTgKUldTWWlCVngrRSsxNnhIWkZaTHpMTnpwbHhQcW1FNkZJOWpJMWcwUDczNU5NV0Q2a3lkWVo1RWYK",
+      "endpoints": [
+        "https://github.com/PaulBayfield/calendar.bayfield.dev/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

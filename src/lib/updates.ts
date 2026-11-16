@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { version } from "../../package.json";
 import { isTauri } from "./auth";
+import type { Translate } from "./i18n";
 
 export const APP_VERSION: string = version;
 
@@ -68,4 +69,58 @@ export function useUpdateCheck(auto = isTauri) {
     };
   }, [auto, check]);
   return { state, check };
+}
+
+export type InstallState =
+  | { status: "idle" | "installing" | "error" }
+  /** `progress` is 0–1, or null while the size isn't known yet. */
+  | { status: "downloading"; progress: number | null };
+
+/** Desktop only: whether the update can be installed from inside the app. */
+export const canInstallUpdates = isTauri;
+
+/**
+ * Desktop: downloads the signed update, installs it over the current version (same folder,
+ * so shortcuts and the taskbar pin stay) and restarts. On Windows the installer closes the
+ * app itself and opens it again when it's done.
+ */
+export function useInstallUpdate() {
+  const [state, setState] = useState<InstallState>({ status: "idle" });
+  const install = useCallback(async () => {
+    setState({ status: "downloading", progress: null });
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (!update) throw new Error("No update found");
+      let total = 0;
+      let received = 0;
+      await update.downloadAndInstall((e) => {
+        if (e.event === "Started") total = e.data.contentLength ?? 0;
+        else if (e.event === "Progress") {
+          received += e.data.chunkLength;
+          setState({ status: "downloading", progress: total ? Math.min(received / total, 1) : null });
+        } else setState({ status: "installing" });
+      });
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    } catch (e) {
+      console.error("Update failed", e);
+      setState({ status: "error" });
+    }
+  }, []);
+  return { state, install };
+}
+
+/** What to show while installing (or after it failed); null when nothing is happening. */
+export function installStatus(t: Translate, s: InstallState): string | null {
+  switch (s.status) {
+    case "downloading":
+      return t("downloadingUpdate", { percent: s.progress === null ? "" : `${Math.round(s.progress * 100)}%` });
+    case "installing":
+      return t("installingUpdate");
+    case "error":
+      return t("updateInstallFailed");
+    default:
+      return null;
+  }
 }

@@ -27,7 +27,7 @@ import { SettingsProvider, useSettings } from "./lib/settings";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 import { useUpcoming } from "./lib/reminders";
 import { useDesktopSync } from "./lib/desktop";
-import { useUpdateCheck } from "./lib/updates";
+import { canInstallUpdates, installStatus, useInstallUpdate, useUpdateCheck } from "./lib/updates";
 import { openExternal } from "./lib/open";
 import { shiftEvent, WeekView } from "./components/WeekView";
 import { Sidebar } from "./components/Sidebar";
@@ -249,6 +249,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [settingsOpen, setSettingsOpen] = useState<SettingsPage | false>(false);
   const updates = useUpdateCheck();
+  const installer = useInstallUpdate();
   const newRelease =
     updates.state.status === "available" && updates.state.release.version !== settings.skippedUpdate ? updates.state.release : null;
   const [toast, setToast] = useState<{ message: string; undo?: () => void } | null>(null);
@@ -1110,11 +1111,17 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
         />
         {newRelease && (
           <div className="banner update-banner" role="status">
-            <span>{t("updateAvailable", { version: newRelease.version })}</span>
+            <span>{installStatus(t, installer.state) ?? t("updateAvailable", { version: newRelease.version })}</span>
             <span className="banner-actions">
-              <button className="link-button" onClick={() => openExternal(newRelease.installer ?? newRelease.url)}>
-                {t("download")}
-              </button>
+              {canInstallUpdates && installer.state.status !== "error" ? (
+                <button className="link-button" disabled={installer.state.status !== "idle"} onClick={() => void installer.install()}>
+                  {t("installUpdate")}
+                </button>
+              ) : (
+                <button className="link-button" onClick={() => openExternal(newRelease.installer ?? newRelease.url)}>
+                  {t("download")}
+                </button>
+              )}
               <button className="link-button" onClick={() => openExternal(newRelease.url)}>
                 {t("whatsNew")}
               </button>
