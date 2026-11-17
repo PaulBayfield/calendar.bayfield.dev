@@ -200,6 +200,13 @@ export const Kanban = (p: P) => (
     <path d="M16 7v9" />
   </Icon>
 );
+export const Square = (p: P) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2" /></Icon>;
+export const SquareCheck = (p: P) => (
+  <Icon {...p}>
+    <rect width="18" height="18" x="3" y="3" rx="2" />
+    <path d="m9 12 2 2 4-4" />
+  </Icon>
+);
 export const More = (p: P) => (
   <Icon {...p}>
     <circle cx="12" cy="12" r="1" />

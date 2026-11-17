@@ -2,6 +2,7 @@
 // same Google access token the app already has; the server checks it belongs to OWNER_EMAIL.
 
 import { getAccessToken, isTauri } from "./auth";
+import { isDemo } from "./demo";
 
 export interface Slot {
   start: Date;
@@ -90,6 +91,7 @@ export function serverBase(serverUrl: string): string {
 }
 
 async function call<T>(base: string, path: string, init: RequestInit = {}): Promise<T> {
+  if (isDemo && path.startsWith("/api/board")) return structuredClone(demoBoard(path, init)) as T;
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
@@ -169,3 +171,29 @@ export const updateTodo = (base: string, id: string, patch: TodoPatch) =>
 
 export const deleteTodo = (base: string, id: string) =>
   call<{ ok: true }>(base, `/api/board/todos/${enc(id)}`, { method: "DELETE" });
+
+/** Demo mode (?demo, dev only): the board lives in memory, like the server would keep it. */
+const demo: { columns: TodoColumn[]; todos: Todo[] } = { columns: [], todos: [] };
+function demoBoard(path: string, init: RequestInit): unknown {
+  const method = init.method ?? "GET";
+  const body = init.body ? JSON.parse(init.body as string) : {};
+  const [, , , kind, id] = path.split("/"); // "", "api", "board", kind, id
+  const now = new Date().toISOString();
+  if (!kind) return structuredClone(demo);
+  if (kind === "columns") {
+    if (method === "POST") return demo.columns[demo.columns.push({ id: crypto.randomUUID(), ...body }) - 1];
+    if (method === "PATCH") return Object.assign(demo.columns.find((c) => c.id === id)!, body);
+    const todos = demo.todos.filter((x) => x.columnId === id);
+    demo.columns = demo.columns.filter((c) => c.id !== id);
+    demo.todos = demo.todos.filter((x) => x.columnId !== id);
+    return { todos };
+  }
+  if (method === "POST") {
+    const todo: Todo = { id: crypto.randomUUID(), notes: "", dueDate: null, dueTime: null, calendarId: null, eventId: null, createdAt: now, updatedAt: now, ...body };
+    demo.todos.push(todo);
+    return todo;
+  }
+  if (method === "PATCH") return Object.assign(demo.todos.find((x) => x.id === id)!, body, { updatedAt: now });
+  demo.todos = demo.todos.filter((x) => x.id !== id);
+  return { ok: true };
+}

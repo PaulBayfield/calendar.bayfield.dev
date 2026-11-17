@@ -3055,3 +3055,29 @@ textarea:disabled {
     scroll-snap-align: start;
   }
 }
+
+/* Task deadlines on the calendar: outlined and dashed, with a checkbox, so they read as to-dos. */
+.event.task {
+  background: color-mix(in srgb, var(--c) 7%, var(--bg));
+  border: 1px dashed color-mix(in srgb, var(--c) 75%, transparent);
+  padding-left: 6px;
+}
+.event.task::before {
+  display: none;
+}
+.event.task:hover {
+  background: color-mix(in srgb, var(--c) 14%, var(--bg));
+}
+.event.task.selected {
+  background: var(--c);
+  border-style: solid;
+}
+.event.task.done .event-title {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.event-task-mark {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-right: 4px;
+}

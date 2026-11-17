@@ -74,10 +74,32 @@ export function TodoBoard(p: Props) {
     // Touch keeps scrolling the board; the task panel's column picker moves cards there.
     if (e.button !== 0 || e.pointerType === "touch") return;
     press.current = { id: todo.id, x: e.clientX, y: e.clientY, el: e.currentTarget };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // Listen on the window, not the card: the card leaves its column while dragged, and an
+    // element that's removed loses its pointer capture (the drop would never arrive).
+    const move = (ev: PointerEvent) => handlers.current.move(ev);
+    const up = () => {
+      stop();
+      handlers.current.up();
+    };
+    const cancel = () => {
+      stop();
+      press.current = null;
+      setDrag(null);
+    };
+    const onKey = (ev: KeyboardEvent) => ev.key === "Escape" && dragRef.current && (ev.stopPropagation(), cancel());
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", onKey, true);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", onKey, true);
   };
 
-  const onCardPointerMove = (e: React.PointerEvent) => {
+  const onCardPointerMove = (e: { clientX: number; clientY: number }) => {
     const start = press.current;
     if (!start) return;
     let d = dragRef.current;
@@ -111,14 +133,12 @@ export function TodoBoard(p: Props) {
     if (!inPlace) p.api.moveTodo(d.id, d.target.columnId, positionBetween(before?.position, after?.position));
   };
 
+  // The window listeners outlive this render; they call the latest handlers.
+  const handlers = useRef({ move: onCardPointerMove, up: onCardPointerUp });
+  handlers.current = { move: onCardPointerMove, up: onCardPointerUp };
+
   const cardHandlers = (todo: Todo) => ({
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => onCardPointerDown(e, todo),
-    onPointerMove: onCardPointerMove,
-    onPointerUp: onCardPointerUp,
-    onPointerCancel: () => {
-      press.current = null;
-      setDrag(null);
-    },
     onClick: () => !justDragged.current && p.onSelect(todo.id),
   });
 

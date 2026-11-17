@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { canEdit, type CalEvent } from "../lib/google";
+import { canEdit, todoIdOf, type CalEvent } from "../lib/google";
 import type { Slot } from "../lib/server";
 import { addMinutes, atMinute, clockMinute, dayDiff, isSameDay, isWeekend, minuteOfDay, toDateOnly } from "../lib/dates";
 import { utcOffsetLabel } from "../lib/i18n";
 import { useWeather } from "../lib/weather";
 import { useSettings } from "../lib/settings";
 import type { MenuTarget } from "./ContextMenu";
-import { Lock } from "./icons";
+import { Lock, Square, SquareCheck } from "./icons";
+
 import { WeatherIcon } from "./WeatherCard";
 
 export const HOUR_HEIGHT = 60;
@@ -343,6 +344,8 @@ export function WeekView(props: Props) {
       ev.end < now && "past",
       selectedKeys.has(ev.key) && "selected",
       ev.key === "draft" && "draft",
+      todoIdOf(ev) && "task",
+      todoIdOf(ev) && taskDone(ev) && "done",
       props.cutKeys.has(ev.key) && "cut",
       (drag?.kind === "move" || drag?.kind === "resize") &&
         (drag.ev.key === ev.key || (drag.kind === "move" && drag.moved && drag.group.some((g) => g.key === ev.key))) &&
@@ -401,7 +404,7 @@ export function WeekView(props: Props) {
               onClick={(e) => !scheduling && props.onSelect(ev, e.ctrlKey || e.metaKey || e.shiftKey)}
               onContextMenu={(e) => openMenu(e, { kind: "event", ev })}
             >
-              <span className="event-title">{ev.title || t("untitled")}</span>
+              <EventTitle ev={ev} />
               {!canEdit(ev) && <ReadOnlyMark />}
             </button>
           ))}
@@ -464,7 +467,7 @@ export function WeekView(props: Props) {
                       onContextMenu={(e) => openMenu(e, { kind: "event", ev })}
                       onKeyDown={(e) => e.key === "Enter" && props.onSelect(ev)}
                     >
-                      <span className="event-title">{ev.title || t("untitled")}</span>
+                      <EventTitle ev={ev} />
                       <span className="event-time">
                         {f.time(ev.start)}
                         {height >= 56 && ` – ${f.time(ev.end)}`}
@@ -501,6 +504,22 @@ export function WeekView(props: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Deadline events of done tasks carry a "✓ " prefix, shown as a ticked box instead. */
+const taskDone = (ev: CalEvent) => ev.title.startsWith("✓ ");
+
+/** The event's title; a task's deadline gets a checkbox in front. */
+function EventTitle({ ev }: { ev: CalEvent }) {
+  const { t } = useSettings();
+  if (!todoIdOf(ev)) return <span className="event-title">{ev.title || t("untitled")}</span>;
+  const done = taskDone(ev);
+  return (
+    <span className="event-title" title={t("task")}>
+      <span className="event-task-mark">{done ? <SquareCheck size={11} /> : <Square size={11} />}</span>
+      {(done ? ev.title.slice(2) : ev.title) || t("untitled")}
+    </span>
   );
 }
 
