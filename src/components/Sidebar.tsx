@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { calendarName, type Calendar } from "../lib/google";
 import { addDays, addMonths, isSameDay, startOfWeek } from "../lib/dates";
 import { useSettings } from "../lib/settings";
-import { ChevronDown, ChevronUp, Compose, Grip, LinkIcon, PanelLeft, Search } from "./icons";
+import { ChevronDown, ChevronUp, Compose, Grip, Kanban, LinkIcon, PanelLeft, Search } from "./icons";
 
 interface Props {
   calendars: Calendar[];
@@ -16,6 +16,9 @@ interface Props {
   onSearch: () => void;
   scheduling: boolean;
   onSchedule: () => void;
+  /** The tasks board is showing. */
+  tasks: boolean;
+  onTasks: () => void;
   onClose: () => void;
   onReorder: (ids: string[]) => void;
 }
@@ -45,6 +48,10 @@ export function Sidebar(props: Props) {
       <button className={`sidebar-row${props.scheduling ? " active" : ""}`} onClick={props.onSchedule}>
         <LinkIcon />
         <span>{t("schedule")}</span>
+      </button>
+      <button className={`sidebar-row${props.tasks ? " active" : ""}`} onClick={props.onTasks}>
+        <Kanban />
+        <span>{t("tasks")}</span>
       </button>
       {/* Only the calendar list scrolls; the header, mini calendar and Planifier stay put. */}
       <div className="sidebar-scroll">

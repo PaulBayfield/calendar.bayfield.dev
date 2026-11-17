@@ -15,13 +15,17 @@ import {
   isGone,
   isRecurring,
   canEdit,
+  todoIdOf,
   type RecurrenceScope,
   type CalEvent,
   type Calendar,
   type EventInput,
   type GoogleEvent,
 } from "./lib/google";
-import type { Slot } from "./lib/server";
+import { serverBase, type Slot } from "./lib/server";
+import { dueAt, eventKeyOf, useBoard, type Todo } from "./lib/board";
+import { TodoBoard } from "./components/TodoBoard";
+import { TaskPanel } from "./components/TaskPanel";
 import { addDays, addMinutes, atMinute, minuteOfDay, parseDateOnly, startOfDay, startOfWeek, toDateOnly } from "./lib/dates";
 import { SettingsProvider, useSettings } from "./lib/settings";
 import { MOBILE_QUERY, useMediaQuery } from "./lib/useMediaQuery";
@@ -249,6 +253,9 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<CalEvent | null>(null);
   const [scheduling, setScheduling] = useState(false);
+  /** The calendar, or the tasks board in its place. */
+  const [view, setView] = useState<"calendar" | "tasks">("calendar");
+  const [selectedTodo, setSelectedTodo] = useState<string | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [settingsOpen, setSettingsOpen] = useState<SettingsPage | false>(false);
   const updates = useUpdateCheck();
@@ -414,6 +421,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   /** Jump to an event found by search and open it. */
   const openFromSearch = (ev: CalEvent) => {
     setSearchOpen(false);
+    setView("calendar");
     setRangeStart(alignStart(ev.start));
     putEvent(null, ev);
     setDraft(null);
@@ -470,6 +478,21 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
     const writable = calendars.filter(isWritable);
     return writable.find((c) => c.id === settings.defaultCalendarId) ?? writable.find((c) => c.primary) ?? writable[0];
   }, [calendars, settings.defaultCalendarId]);
+
+  const boardApi = useBoard({
+    base: serverBase(settings.serverUrl),
+    active: view === "tasks",
+    calendars,
+    defaultCalendar,
+    t,
+    onError,
+    onEventChange: putEvent,
+  });
+  // Pick up changes made on another device while the board is open.
+  useEffect(() => {
+    if (refreshTick && view === "tasks") void boardApi.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTick]);
 
   const startDraft = (start: Date, end: Date, allDay: boolean) => {
     if (!defaultCalendar) return;
@@ -721,6 +744,9 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
       const updated = await updateEvent(ev, patch);
       if (updated) putEvent(ev.key, updated);
       else dropGone(ev);
+      // A task's deadline event was moved: the deadline follows.
+      const todoId = todoIdOf(ev);
+      if (updated && todoId && (patch.start || patch.end)) boardApi.followEvent(todoId, updated);
     } catch (e) {
       if (isGone(e)) return dropGone(ev);
       putEvent(ev.key, ev);
@@ -799,10 +825,16 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
       pendingDelete.current = null;
       setToast(null);
       for (const ev of evs)
-        deleteEvent(ev).catch((e) => {
-          putEvent(null, ev);
-          onError(e);
-        });
+        deleteEvent(ev)
+          .then(() => {
+            // Deleting a task's deadline event removes the deadline.
+            const todoId = todoIdOf(ev);
+            if (todoId) boardApi.clearDeadline(todoId);
+          })
+          .catch((e) => {
+            putEvent(null, ev);
+            onError(e);
+          });
     };
     const timer = setTimeout(commit, UNDO_MS);
     const cancel = () => {
@@ -957,8 +989,45 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   const goToday = useCallback(() => setRangeStart(alignStart(new Date())), [alignStart]);
 
   const toggleScheduling = () => {
-    setScheduling((s) => !s);
+    if (view === "tasks") {
+      setView("calendar");
+      setScheduling(true);
+    } else setScheduling((s) => !s);
     select(null);
+  };
+
+  const toggleTasks = () => {
+    if (view === "tasks") return setView("calendar");
+    setView("tasks");
+    setScheduling(false);
+    select(null);
+  };
+
+  /** From a task: switch to the calendar on its deadline and select its event. */
+  const showTaskInCalendar = (todo: Todo) => {
+    const due = dueAt(todo);
+    if (!due) return;
+    setView("calendar");
+    setScheduling(false);
+    setDraft(null);
+    setRangeStart(alignStart(due));
+    setExtraKeys([]);
+    setSelectedKey(eventKeyOf(todo));
+    setFocus((f) => ({ time: due, seq: (f?.seq ?? 0) + 1 }));
+  };
+
+  /** From a deadline event: open its task on the board. */
+  const openTask = (todoId: string) => {
+    closeDetails();
+    setScheduling(false);
+    setView("tasks");
+    setSelectedTodo(todoId);
+  };
+
+  /** Calendar actions started from the tasks view bring the calendar back. */
+  const inCalendar = (fn: () => void) => () => {
+    setView("calendar");
+    fn();
   };
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -980,6 +1049,17 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === ",") {
       e.preventDefault();
       setSettingsOpen("preferences");
+      return;
+    }
+    // The board has its own few keys; the calendar's don't apply there. Its text fields handle Esc themselves.
+    if (view === "tasks") {
+      if (inField || e.ctrlKey || e.metaKey || e.altKey || settingsOpen || document.querySelector(".picker")) return;
+      const key = e.key.toLowerCase();
+      if (key === "escape" && selectedTodo) setSelectedTodo(null);
+      else if (key === "\\") toggleSidebar();
+      else if (key === "/") setSearchOpen(true);
+      else return;
+      e.preventDefault();
       return;
     }
     // Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo. In text fields they keep undoing typing.
@@ -1059,8 +1139,13 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
   const account = calendars.find((c) => c.primary)?.id;
   // On narrow windows the panel overlays the grid, so only open it on demand.
   // Several selected events show the selection bar instead of their details.
-  const inPopover = !!selectedEvent && !multi && !scheduling && settings.eventDetails === "popover";
-  const panelVisible = (settings.panel && wide) || (!!selectedEvent && !multi && !inPopover) || scheduling;
+  const tasksView = view === "tasks";
+  const selectedTask = tasksView && selectedTodo ? boardApi.board?.todos.find((x) => x.id === selectedTodo) : undefined;
+  const inPopover = !tasksView && !!selectedEvent && !multi && !scheduling && settings.eventDetails === "popover";
+  // On the board, the panel only holds the selected task.
+  const panelVisible = tasksView
+    ? !!selectedTask
+    : (settings.panel && wide) || (!!selectedEvent && !multi && !inPopover) || scheduling;
   const closeDetails = useCallback(() => {
     setDraft(null);
     setSelectedKey(null);
@@ -1087,14 +1172,28 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
           today={now}
-          onPickDate={(d) => fromDrawer(() => setRangeStart(alignStart(d)))()}
-          onNewEvent={fromDrawer(newEventNow)}
+          onPickDate={(d) => fromDrawer(inCalendar(() => setRangeStart(alignStart(d))))()}
+          onNewEvent={fromDrawer(inCalendar(newEventNow))}
           onSearch={fromDrawer(() => setSearchOpen(true))}
-          scheduling={scheduling}
+          scheduling={scheduling && !tasksView}
           onSchedule={fromDrawer(toggleScheduling)}
+          tasks={tasksView}
+          onTasks={fromDrawer(toggleTasks)}
         />
       )}
       <main className="main">
+        {tasksView ? (
+          <TodoBoard
+            api={boardApi}
+            configured={!!serverBase(settings.serverUrl)}
+            now={now}
+            selectedId={selectedTask?.id ?? null}
+            onSelect={setSelectedTodo}
+            showSidebarToggle={mobile || !settings.sidebar}
+            onToggleSidebar={toggleSidebar}
+            showWindowControls={isTauri && !panelVisible}
+          />
+        ) : (
         <Toolbar
           title={f.rangeTitle(rangeStart, rangeEnd, mobile)}
           showSidebarToggle={mobile || !settings.sidebar}
@@ -1112,6 +1211,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
           onOpenSettings={() => setSettingsOpen("preferences")}
           onSignOut={onSignOut}
         />
+        )}
         {newRelease && (
           <div className="banner update-banner" role="status">
             <span>{installStatus(t, installer.state) ?? t("updateAvailable", { version: newRelease.version })}</span>
@@ -1140,6 +1240,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
             {t("reconnecting")}
           </div>
         )}
+        {!tasksView && (
         <WeekView
           days={dayList}
           events={visibleEvents}
@@ -1160,10 +1261,20 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
           onHoverTime={(time) => (hoverTime.current = time)}
           cutKeys={new Set(clip?.mode === "cut" ? clip.evs.map((e) => e.key) : [])}
         />
+        )}
       </main>
       {panelVisible && (
         <aside className="panel">
-          {scheduling ? (
+          {selectedTask && boardApi.board ? (
+            <TaskPanel
+              key={selectedTask.id}
+              todo={selectedTask}
+              board={boardApi.board}
+              api={boardApi}
+              onShowInCalendar={showTaskInCalendar}
+              onClose={() => setSelectedTodo(null)}
+            />
+          ) : scheduling ? (
             <SchedulePanel
               slots={slots}
               calendars={orderedCalendars}
@@ -1188,6 +1299,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
               onDelete={remove}
               onDraftChange={setDraft}
               onClose={() => select(null)}
+              onOpenTask={openTask}
             />
           ) : (
             <Shortcuts onClose={() => update({ panel: false })} />
@@ -1210,6 +1322,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
             onDelete={remove}
             onDraftChange={setDraft}
             onClose={closeDetails}
+            onOpenTask={openTask}
           />
         </EventPopover>
       )}

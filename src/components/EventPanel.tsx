@@ -12,6 +12,7 @@ import {
   type Calendar,
   type EventInput,
   type Reminders as RemindersValue,
+  todoIdOf,
 } from "../lib/google";
 import { addDays, fromDateAndTime, toDateOnly, toTimeOnly } from "../lib/dates";
 import { openExternal } from "../lib/open";
@@ -23,7 +24,7 @@ import { Autocomplete } from "./Autocomplete";
 import { Reminders } from "./Reminders";
 import { suggestContacts } from "../lib/contacts";
 import { endPlaceSession, rememberPlace, suggestPlaces } from "../lib/places";
-import { AlignLeft, Bell, Clock, External, MapPin, Repeat, Trash, User, Video, X, PanelRight, PopOut, Lock } from "./icons";
+import { AlignLeft, Bell, Clock, External, Kanban, MapPin, Repeat, Trash, User, Video, X, PanelRight, PopOut, Lock } from "./icons";
 
 const RECURRENCE: { value: string; label: StringKey }[] = [
   { value: "", label: "recNone" },
@@ -97,6 +98,8 @@ interface Props {
   /** Loaded events, mined for guest and place suggestions. */
   knownEvents: CalEvent[];
   onToggleVariant: () => void;
+  /** Opens the task whose deadline this event shows. */
+  onOpenTask?: (todoId: string) => void;
 }
 
 export function EventPanel({
@@ -112,6 +115,7 @@ export function EventPanel({
   variant,
   onToggleVariant,
   knownEvents,
+  onOpenTask,
 }: Props) {
   const { t, lang } = useSettings();
   const [form, setForm] = useState(() => formFrom(ev));
@@ -559,6 +563,17 @@ export function EventPanel({
             </div>
           </Row>
         </Section>
+
+        {!isDraft && todoIdOf(ev) && onOpenTask && (
+          <Section>
+            <Row icon={<Kanban />}>
+              <span className="small muted">{t("linkedTask")}</span>
+              <button className="link-button" onClick={() => onOpenTask(todoIdOf(ev)!)}>
+                {t("openTask")}
+              </button>
+            </Row>
+          </Section>
+        )}
 
         <div className="panel-footer">
           {isDraft ? (

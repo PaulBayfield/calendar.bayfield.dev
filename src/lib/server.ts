@@ -118,3 +118,54 @@ export const createLink = (base: string, input: LinkInput) =>
 
 export const deleteLink = (base: string, id: string) =>
   call<{ ok: true }>(base, `/api/links/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+// --- Tasks board ---
+
+export interface TodoColumn {
+  id: string;
+  name: string;
+  position: number;
+}
+
+export interface Todo {
+  id: string;
+  columnId: string;
+  title: string;
+  notes: string;
+  position: number;
+  /** "YYYY-MM-DD", local day. */
+  dueDate: string | null;
+  /** "HH:MM"; null for a whole-day deadline. */
+  dueTime: string | null;
+  /** The Google event showing the deadline. */
+  calendarId: string | null;
+  eventId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type TodoPatch = Partial<Pick<Todo, "columnId" | "title" | "notes" | "position" | "dueDate" | "dueTime" | "calendarId" | "eventId">>;
+
+const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
+const enc = encodeURIComponent;
+
+export const getBoard = (base: string) => call<{ columns: TodoColumn[]; todos: Todo[] }>(base, "/api/board");
+
+export const createColumn = (base: string, input: Pick<TodoColumn, "name" | "position">) =>
+  call<TodoColumn>(base, "/api/board/columns", json("POST", input));
+
+export const updateColumn = (base: string, id: string, patch: Partial<Pick<TodoColumn, "name" | "position">>) =>
+  call<TodoColumn>(base, `/api/board/columns/${enc(id)}`, json("PATCH", patch));
+
+/** Returns the tasks that went with it, so their calendar events can be removed. */
+export const deleteColumn = (base: string, id: string) =>
+  call<{ todos: Todo[] }>(base, `/api/board/columns/${enc(id)}`, { method: "DELETE" });
+
+export const createTodo = (base: string, input: TodoPatch & Pick<Todo, "columnId" | "title" | "position">) =>
+  call<Todo>(base, "/api/board/todos", json("POST", input));
+
+export const updateTodo = (base: string, id: string, patch: TodoPatch) =>
+  call<Todo>(base, `/api/board/todos/${enc(id)}`, json("PATCH", patch));
+
+export const deleteTodo = (base: string, id: string) =>
+  call<{ ok: true }>(base, `/api/board/todos/${enc(id)}`, { method: "DELETE" });

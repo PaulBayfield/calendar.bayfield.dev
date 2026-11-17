@@ -15,7 +15,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { openStore, type Link, type Slot } from "./db.ts";
+import { openStore, type Link, type Slot, type Todo, type TodoColumn, type TodoPatch } from "./db.ts";
 import {
   authUrl,
   calendarApi,
@@ -403,7 +403,7 @@ app.use(
   cors({
     origin: (origin) => (CORS_ORIGINS.has(origin) ? origin : null),
     allowHeaders: ["Authorization", "Content-Type"],
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     maxAge: 600,
   }),
 );
@@ -507,11 +507,124 @@ app.delete("/api/links/:id", requireOwner, (c) => {
   return c.json({ ok: true });
 });
 
+// Tasks board. The app keeps each deadline's Google event in step and records its id here.
+
+const isDate = (s: unknown): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const isTime = (s: unknown): s is string => typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
+const isPosition = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+const text = (s: unknown, max: number) => (typeof s === "string" ? s.slice(0, max) : undefined);
+const idOrNull = (s: unknown) => (s === null ? null : typeof s === "string" && s.length <= 1024 ? s : undefined);
+
+/** The fields of a todo body that are present and valid; `null` when one is present but invalid. */
+function todoPatch(body: any): TodoPatch | null {
+  const patch: TodoPatch = {};
+  if ("columnId" in body) {
+    if (typeof body.columnId !== "string" || !store.getColumn(body.columnId)) return null;
+    patch.columnId = body.columnId;
+  }
+  if ("title" in body) {
+    const title = text(body.title, 500)?.trim();
+    if (!title) return null;
+    patch.title = title;
+  }
+  if ("notes" in body) {
+    const notes = text(body.notes, 10_000);
+    if (notes === undefined) return null;
+    patch.notes = notes;
+  }
+  if ("position" in body) {
+    if (!isPosition(body.position)) return null;
+    patch.position = body.position;
+  }
+  if ("dueDate" in body) {
+    if (body.dueDate !== null && !isDate(body.dueDate)) return null;
+    patch.dueDate = body.dueDate;
+  }
+  if ("dueTime" in body) {
+    if (body.dueTime !== null && !isTime(body.dueTime)) return null;
+    patch.dueTime = body.dueTime;
+  }
+  for (const key of ["calendarId", "eventId"] as const) {
+    if (!(key in body)) continue;
+    const value = idOrNull(body[key]);
+    if (value === undefined) return null;
+    patch[key] = value;
+  }
+  return patch;
+}
+
+app.get("/api/board", requireOwner, (c) => c.json({ columns: store.listColumns(), todos: store.listTodos() }));
+
+app.post("/api/board/columns", requireOwner, async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const name = text(body?.name, 100)?.trim();
+  if (!name || !isPosition(body?.position) || store.listColumns().length >= 50) return c.json({ error: "Invalid column" }, 400);
+  const column: TodoColumn = { id: newId(), name, position: body.position };
+  store.addColumn(column);
+  return c.json(column, 201);
+});
+
+app.patch("/api/board/columns/:id", requireOwner, async (c) => {
+  const id = (c.req.param("id") ?? "");
+  if (!store.getColumn(id)) return c.json({ error: "Not found" }, 404);
+  const body = await c.req.json().catch(() => null);
+  const name = body && "name" in body ? text(body.name, 100)?.trim() : undefined;
+  if (body && "name" in body && !name) return c.json({ error: "Invalid column" }, 400);
+  if (body && "position" in body && !isPosition(body.position)) return c.json({ error: "Invalid column" }, 400);
+  store.updateColumn(id, { name, position: body.position });
+  return c.json(store.getColumn(id));
+});
+
+app.delete("/api/board/columns/:id", requireOwner, (c) => {
+  // The removed todos come back so the app can delete their calendar events.
+  return c.json({ todos: store.deleteColumn((c.req.param("id") ?? "")) });
+});
+
+app.post("/api/board/todos", requireOwner, async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const patch = body ? todoPatch(body) : null;
+  if (!patch || !patch.columnId || !patch.title || patch.position === undefined || store.listTodos().length >= 5000) {
+    return c.json({ error: "Invalid task" }, 400);
+  }
+  const now = new Date().toISOString();
+  const todo: Todo = {
+    id: newId(),
+    columnId: patch.columnId,
+    title: patch.title,
+    notes: patch.notes ?? "",
+    position: patch.position,
+    dueDate: patch.dueDate ?? null,
+    dueTime: patch.dueDate ? (patch.dueTime ?? null) : null,
+    calendarId: null,
+    eventId: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.addTodo(todo);
+  return c.json(todo, 201);
+});
+
+app.patch("/api/board/todos/:id", requireOwner, async (c) => {
+  const id = (c.req.param("id") ?? "");
+  if (!store.getTodo(id)) return c.json({ error: "Not found" }, 404);
+  const body = await c.req.json().catch(() => null);
+  const patch = body ? todoPatch(body) : null;
+  if (!patch) return c.json({ error: "Invalid task" }, 400);
+  if (patch.dueDate === null) patch.dueTime = null; // No time without a day.
+  store.updateTodo(id, patch);
+  return c.json(store.getTodo(id));
+});
+
+app.delete("/api/board/todos/:id", requireOwner, (c) => {
+  store.deleteTodo((c.req.param("id") ?? ""));
+  return c.json({ ok: true });
+});
+
 // Public
 
 app.get("/api/public/links/:id", async (c) => {
   if (rateLimited(`view:${clientIp(c)}`, 60, 10 * 60_000)) return c.json({ error: "Too many requests, try again later" }, 429);
-  const link = store.getLink(c.req.param("id"));
+  const link = store.getLink((c.req.param("id") ?? ""));
   if (!link) return c.json({ error: "Not found" }, 404);
   const booked = link.singleUse && store.bookingsFor(link.id).length > 0;
   return c.json({
@@ -526,7 +639,7 @@ app.get("/api/public/links/:id", async (c) => {
 
 app.post("/api/public/links/:id/book", async (c) => {
   if (rateLimited(`book:${clientIp(c)}`, 10, 60 * 60_000)) return c.json({ error: "Too many attempts, try again later" }, 429);
-  const link = store.getLink(c.req.param("id"));
+  const link = store.getLink((c.req.param("id") ?? ""));
   if (!link) return c.json({ error: "Not found" }, 404);
 
   const body = await c.req.json().catch(() => null);

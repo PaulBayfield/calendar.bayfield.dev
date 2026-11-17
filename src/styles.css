@@ -2860,3 +2860,198 @@ textarea:disabled {
     opacity: 0.35;
   }
 }
+
+/* ---------- Tasks board ---------- */
+
+/* Banners sit above the board, as they do above the calendar. */
+.main > .board,
+.main > .board-empty {
+  order: 1;
+}
+.board-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+}
+.board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  overflow: auto;
+}
+.board.dragging,
+.board.dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.board-column {
+  flex: none;
+  width: 272px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  transition: border-color 120ms;
+}
+.board-column.drop-target {
+  border-color: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+.board-column-new {
+  padding: 8px;
+}
+.board-column-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 6px 4px 12px;
+}
+.board-column-name {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-column-count {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  min-height: 8px;
+}
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+.board-card:hover {
+  border-color: var(--text-faint);
+}
+.board-card.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.board-card:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.board-card.ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  transform: rotate(1.5deg);
+}
+.board-card-title {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.board-card-title.done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.board-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.due-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.due-chip.overdue {
+  color: var(--accent);
+  font-weight: 500;
+}
+.board-card-notes {
+  display: inline-flex;
+}
+.board-drop {
+  flex: none;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 60%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+.board-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.board-add:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.board-input {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--primary);
+  background: var(--bg-elevated);
+  outline: none;
+  font-size: 13px;
+  resize: none;
+}
+.board-menu {
+  min-width: 180px;
+  padding: 4px;
+  display: grid;
+}
+.board-menu button {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: left;
+}
+.board-menu button:hover {
+  background: var(--hover);
+}
+.board-menu button.danger {
+  color: var(--accent);
+}
+.task-deadline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .board {
+    padding: 12px;
+    scroll-snap-type: x mandatory;
+  }
+  .board-column {
+    width: min(300px, calc(100vw - 48px));
+    scroll-snap-align: start;
+  }
+}

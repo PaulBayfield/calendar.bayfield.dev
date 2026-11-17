@@ -55,6 +55,57 @@ interface BookingRow {
   created_at: string;
 }
 
+/** A kanban column. Ordered by `position` (fractional, so a move rewrites one row). */
+export interface TodoColumn {
+  id: string;
+  name: string;
+  position: number;
+}
+
+export interface Todo {
+  id: string;
+  columnId: string;
+  title: string;
+  notes: string;
+  position: number;
+  /** Deadline day, "YYYY-MM-DD" (the owner's local day). */
+  dueDate: string | null;
+  /** Deadline time, "HH:MM"; null for a whole-day deadline. */
+  dueTime: string | null;
+  /** The Google event that shows the deadline on the calendar. */
+  calendarId: string | null;
+  eventId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TodoRow {
+  id: string;
+  column_id: string;
+  title: string;
+  notes: string;
+  position: number;
+  due_date: string | null;
+  due_time: string | null;
+  calendar_id: string | null;
+  event_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Todo fields a PATCH may change, mapped to their columns. */
+const TODO_FIELDS = {
+  columnId: "column_id",
+  title: "title",
+  notes: "notes",
+  position: "position",
+  dueDate: "due_date",
+  dueTime: "due_time",
+  calendarId: "calendar_id",
+  eventId: "event_id",
+} as const;
+export type TodoPatch = Partial<Pick<Todo, keyof typeof TODO_FIELDS>>;
+
 export type Store = ReturnType<typeof openStore>;
 
 export function openStore(dataDir: string) {
@@ -87,6 +138,25 @@ export function openStore(dataDir: string) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS bookings_link ON bookings(link_id);
+    CREATE TABLE IF NOT EXISTS todo_columns (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      position REAL NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS todos (
+      id TEXT PRIMARY KEY,
+      column_id TEXT NOT NULL REFERENCES todo_columns(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      position REAL NOT NULL,
+      due_date TEXT,
+      due_time TEXT,
+      calendar_id TEXT,
+      event_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS todos_column ON todos(column_id);
   `);
 
   const toLink = (r: LinkRow): Link => ({
@@ -111,6 +181,20 @@ export function openStore(dataDir: string) {
     email: r.email,
     eventId: r.event_id,
     createdAt: r.created_at,
+  });
+
+  const toTodo = (r: TodoRow): Todo => ({
+    id: r.id,
+    columnId: r.column_id,
+    title: r.title,
+    notes: r.notes,
+    position: r.position,
+    dueDate: r.due_date,
+    dueTime: r.due_time,
+    calendarId: r.calendar_id,
+    eventId: r.event_id,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   });
 
   return {
@@ -170,6 +254,55 @@ export function openStore(dataDir: string) {
     },
     bookingsFor(linkId: string): Booking[] {
       return (db.prepare("SELECT * FROM bookings WHERE link_id = ? ORDER BY start").all(linkId) as unknown as BookingRow[]).map(toBooking);
+    },
+
+    listColumns(): TodoColumn[] {
+      return db.prepare("SELECT id, name, position FROM todo_columns ORDER BY position").all() as unknown as TodoColumn[];
+    },
+    getColumn(id: string): TodoColumn | undefined {
+      return db.prepare("SELECT id, name, position FROM todo_columns WHERE id = ?").get(id) as TodoColumn | undefined;
+    },
+    addColumn(col: TodoColumn) {
+      db.prepare("INSERT INTO todo_columns (id, name, position) VALUES (?, ?, ?)").run(col.id, col.name, col.position);
+    },
+    updateColumn(id: string, patch: Partial<Pick<TodoColumn, "name" | "position">>) {
+      if (patch.name !== undefined) db.prepare("UPDATE todo_columns SET name = ? WHERE id = ?").run(patch.name, id);
+      if (patch.position !== undefined) db.prepare("UPDATE todo_columns SET position = ? WHERE id = ?").run(patch.position, id);
+    },
+    /** Deletes the column and its todos; returns the todos so their calendar events can be removed. */
+    deleteColumn(id: string): Todo[] {
+      const removed = (db.prepare("SELECT * FROM todos WHERE column_id = ?").all(id) as unknown as TodoRow[]).map(toTodo);
+      db.prepare("DELETE FROM todos WHERE column_id = ?").run(id);
+      db.prepare("DELETE FROM todo_columns WHERE id = ?").run(id);
+      return removed;
+    },
+
+    listTodos(): Todo[] {
+      return (db.prepare("SELECT * FROM todos ORDER BY position").all() as unknown as TodoRow[]).map(toTodo);
+    },
+    getTodo(id: string): Todo | undefined {
+      const row = db.prepare("SELECT * FROM todos WHERE id = ?").get(id) as TodoRow | undefined;
+      return row && toTodo(row);
+    },
+    addTodo(t: Todo) {
+      db.prepare(
+        `INSERT INTO todos (id, column_id, title, notes, position, due_date, due_time, calendar_id, event_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(t.id, t.columnId, t.title, t.notes, t.position, t.dueDate, t.dueTime, t.calendarId, t.eventId, t.createdAt, t.updatedAt);
+    },
+    updateTodo(id: string, patch: TodoPatch) {
+      const entries = (Object.keys(TODO_FIELDS) as (keyof typeof TODO_FIELDS)[]).flatMap((k) =>
+        patch[k] === undefined ? [] : [[TODO_FIELDS[k], patch[k]] as const],
+      );
+      if (!entries.length) return;
+      db.prepare(`UPDATE todos SET ${entries.map(([col]) => `${col} = ?`).join(", ")}, updated_at = ? WHERE id = ?`).run(
+        ...entries.map(([, v]) => v),
+        new Date().toISOString(),
+        id,
+      );
+    },
+    deleteTodo(id: string) {
+      db.prepare("DELETE FROM todos WHERE id = ?").run(id);
     },
   };
 }

@@ -62,6 +62,8 @@ export interface GoogleEvent {
   guestsCanModify?: boolean;
   attendees?: Attendee[];
   conferenceData?: { entryPoints?: { entryPointType: string; uri: string }[] };
+  /** Private properties are only visible to this calendar's owner. `todoId` links a task's deadline. */
+  extendedProperties?: { private?: Record<string, string> };
 }
 
 export interface CalEvent {
@@ -94,6 +96,7 @@ export interface EventInput {
   /** Send `overrides: []` with `useDefault: true`, or Google keeps the old overrides. */
   reminders?: Reminders;
   conferenceData?: unknown;
+  extendedProperties?: { private?: Record<string, string> };
 }
 
 /** Google's per-event color palette (colorId → hex). */
@@ -294,6 +297,35 @@ export async function moveEvent(ev: CalEvent, destination: Calendar): Promise<Ca
     return toCalEvent(destination, event) ?? toCalEvent(destination, await getEvent(destination, ev.event.id));
   });
 }
+
+/**
+ * Patches the event if `eventId` still exists on `calendar`, otherwise creates a new one (it was
+ * never made, or was deleted elsewhere). Used for task deadlines, whose id we keep elsewhere.
+ */
+export async function saveEventById(calendar: Calendar, eventId: string | null, input: EventInput): Promise<CalEvent | null> {
+  if (eventId && !isDemo) {
+    try {
+      const event = await serial(eventId, () =>
+        api<GoogleEvent>(eventsPath(calendar, eventId), { method: "PATCH", params: WRITE_PARAMS, body: input }),
+      );
+      if (event.status !== "cancelled") return toCalEvent(calendar, event);
+    } catch (e) {
+      if (!isGone(e)) throw e;
+    }
+  }
+  return createEvent(calendar, input);
+}
+
+/** Deletes an event by id; one that's already gone counts as deleted. */
+export async function deleteEventById(calendar: Calendar, eventId: string): Promise<void> {
+  if (isDemo) return;
+  await serial(eventId, () => api(eventsPath(calendar, eventId), { method: "DELETE", params: { sendUpdates: "all" } })).catch((e) => {
+    if (!isGone(e)) throw e;
+  });
+}
+
+/** The task a deadline event belongs to. */
+export const todoIdOf = (ev: CalEvent): string | undefined => ev.event.extendedProperties?.private?.todoId;
 
 /** Demo mode: echo writes back as if Google accepted them. */
 function demoWrite(calendar: Calendar, event: object): CalEvent {
