@@ -270,6 +270,17 @@ const en = {
   colDone: "Done",
   tasksHint: "Tasks with a deadline show up on your default calendar. The last column counts as done.",
   overdue: "Overdue",
+  priority: "Priority",
+  priorityNone: "No priority",
+  priorityLow: "Low",
+  priorityMedium: "Medium",
+  priorityHigh: "High",
+  hideDoneAfter: "Hide done tasks after",
+  hideDoneHint: "Tasks that have sat in the last column this long leave the board. Their calendar events stay.",
+  never: "Never",
+  hiddenTasks: "{n} hidden",
+  show: "Show",
+  hide: "Hide",
 };
 
 type Strings = typeof en;
@@ -545,6 +556,17 @@ const fr: Strings = {
   colDone: "Terminé",
   tasksHint: "Les tâches avec une échéance apparaissent dans votre calendrier par défaut. La dernière colonne compte comme terminée.",
   overdue: "En retard",
+  priority: "Priorité",
+  priorityNone: "Aucune priorité",
+  priorityLow: "Basse",
+  priorityMedium: "Moyenne",
+  priorityHigh: "Haute",
+  hideDoneAfter: "Masquer les tâches terminées après",
+  hideDoneHint: "Les tâches restées aussi longtemps dans la dernière colonne disparaissent du tableau. Leurs événements restent dans le calendrier.",
+  never: "Jamais",
+  hiddenTasks: "{n} masquée(s)",
+  show: "Afficher",
+  hide: "Masquer",
 };
 
 export type Lang = "en" | "fr";

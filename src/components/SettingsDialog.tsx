@@ -214,6 +214,16 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
           </select>
         </Row>
       </section>
+      <section className="settings-rows">
+        <h3>{t("tasks")}</h3>
+        <Row label={t("hideDoneAfter")} hint={t("hideDoneHint")}>
+          {select("hideDoneAfter", [
+            [0, t("never")],
+            [1, t("oneDay")],
+            ...[3, 7, 30].map((n) => [n, t("days", { n })] as [number, string]),
+          ])}
+        </Row>
+      </section>
       <WeatherSection />
     </>
   );

@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { byPosition, lastOf, positionBetween, type BoardApi, type Board, type Todo } from "../lib/board";
+import { byPosition, lastOf, positionBetween, PRIORITY_LABELS, type BoardApi, type Board, type Priority, type Todo } from "../lib/board";
 import { toDateOnly } from "../lib/dates";
 import { useSettings } from "../lib/settings";
 import { PanelHeader } from "./PanelHeader";
 import { DatePicker, TimePicker } from "./pickers";
-import { AlignLeft, CalendarIcon, External, Kanban, Trash, X } from "./icons";
+import { AlignLeft, CalendarIcon, External, Flag, Kanban, Trash, X } from "./icons";
 
 interface Props {
   todo: Todo;
@@ -52,6 +52,20 @@ export function TaskPanel({ todo, board, api, onShowInCalendar, onClose }: Props
               {columns.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row icon={<Flag />}>
+            <select
+              value={todo.priority}
+              aria-label={t("priority")}
+              className={`priority-select p${todo.priority}`}
+              onChange={(e) => api.updateTodo(todo.id, { priority: Number(e.target.value) as Priority })}
+            >
+              {([3, 2, 1, 0] as const).map((p) => (
+                <option key={p} value={p}>
+                  {t(PRIORITY_LABELS[p])}
                 </option>
               ))}
             </select>

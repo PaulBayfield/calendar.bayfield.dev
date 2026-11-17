@@ -1058,6 +1058,7 @@ function CalendarApp({ onError, onSignOut }: CalendarAppProps) {
       if (key === "escape" && selectedTodo) setSelectedTodo(null);
       else if (key === "\\") toggleSidebar();
       else if (key === "/") setSearchOpen(true);
+      else if (key === "h") update({ privacy: !settings.privacy });
       else return;
       e.preventDefault();
       return;

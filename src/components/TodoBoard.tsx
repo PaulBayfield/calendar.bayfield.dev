@@ -1,10 +1,10 @@
 import { useRef, useState, type ReactNode } from "react";
-import { byPosition, dueAt, isDone, isOverdue, positionBetween, type BoardApi, type Todo, type TodoColumn } from "../lib/board";
+import { byPosition, dueAt, isDone, isOverdue, isStale, positionBetween, PRIORITY_LABELS, type BoardApi, type Todo, type TodoColumn } from "../lib/board";
 import { addDays, isSameDay } from "../lib/dates";
 import { useSettings } from "../lib/settings";
 import { Dropdown } from "./pickers";
-import { WindowControls } from "./Toolbar";
-import { AlignLeft, CalendarIcon, More, PanelLeft, Plus } from "./icons";
+import { PrivacyToggle, WindowControls } from "./Toolbar";
+import { AlignLeft, CalendarIcon, Flag, More, PanelLeft, Plus } from "./icons";
 
 interface Props {
   api: BoardApi;
@@ -21,8 +21,11 @@ interface Props {
 /** Where a dragged card would land. */
 interface Target {
   columnId: string;
-  /** Index among the column's other cards. */
+  /** Index among the column's other shown cards. */
   index: number;
+  /** The shown cards it lands between (hidden done tasks may sit between them too). */
+  prevId?: string;
+  nextId?: string;
 }
 
 interface Drag {
@@ -67,7 +70,8 @@ export function TodoBoard(p: Props) {
       const r = c.getBoundingClientRect();
       return y < r.top + r.height / 2;
     });
-    return { columnId: column.dataset.columnId!, index: index < 0 ? cards.length : index };
+    const at = index < 0 ? cards.length : index;
+    return { columnId: column.dataset.columnId!, index: at, prevId: cards[at - 1]?.dataset.todoId, nextId: cards[at]?.dataset.todoId };
   };
 
   const onCardPointerDown = (e: React.PointerEvent<HTMLElement>, todo: Todo) => {
@@ -120,9 +124,8 @@ export function TodoBoard(p: Props) {
     justDragged.current = true;
     setTimeout(() => (justDragged.current = false));
     if (!d.target || !board) return;
-    const others = byPosition(board.todos.filter((x) => x.columnId === d.target!.columnId && x.id !== d.id));
-    const before = others[d.target.index - 1];
-    const after = others[d.target.index];
+    const before = board.todos.find((x) => x.id === d.target!.prevId);
+    const after = board.todos.find((x) => x.id === d.target!.nextId);
     const todo = board.todos.find((x) => x.id === d.id);
     if (!todo) return;
     // Dropped back where it was.
@@ -162,6 +165,7 @@ export function TodoBoard(p: Props) {
             <Plus size={14} /> {t("newColumn")}
           </button>
         )}
+        <PrivacyToggle />
         {p.showWindowControls && <WindowControls />}
       </header>
       {!p.configured ? (
@@ -228,8 +232,9 @@ interface ColumnProps {
 }
 
 function Column({ column, todos, first, last, done, api, now, selectedId, drag, cardHandlers, onSelect }: ColumnProps) {
-  const { t } = useSettings();
+  const { t, settings } = useSettings();
   const [renaming, setRenaming] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [adding, setAdding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -239,8 +244,11 @@ function Column({ column, todos, first, last, done, api, now, selectedId, drag, 
     setConfirmDelete(false);
   };
 
+  // Done tasks leave the board after a while (Settings), unless asked for.
+  const stale = todos.filter((x) => isStale(x, done, settings.hideDoneAfter, now));
+  const visible = showHidden ? todos : todos.filter((x) => !stale.includes(x));
   // While dragging, the dragged card leaves its slot and a gap opens where it would land.
-  const shown = drag ? todos.filter((x) => x.id !== drag.id) : todos;
+  const shown = drag ? visible.filter((x) => x.id !== drag.id) : visible;
   const dropIndex = drag?.target?.columnId === column.id ? drag.target.index : -1;
   const gap = drag && <div key="drop" className="board-drop" style={{ height: drag.h }} />;
   const cards: ReactNode[] = shown.map((todo) => (
@@ -276,7 +284,7 @@ function Column({ column, todos, first, last, done, api, now, selectedId, drag, 
             <span className="board-column-name" onDoubleClick={() => setRenaming(true)}>
               {column.name}
             </span>
-            <span className="board-column-count">{todos.length}</span>
+            <span className="board-column-count">{visible.length}</span>
             <div className="toolbar-spacer" />
             <button className="icon-button small" title={t("addTask")} onClick={() => setAdding(true)}>
               <Plus size={14} />
@@ -331,12 +339,17 @@ function Column({ column, todos, first, last, done, api, now, selectedId, drag, 
       </div>
       <div className="board-cards">
         {cards}
+        {stale.length > 0 && (
+          <button className="board-hidden" onClick={() => setShowHidden((s) => !s)}>
+            {showHidden ? t("hide") : `${t("hiddenTasks", { n: stale.length })} · ${t("show")}`}
+          </button>
+        )}
         {adding ? (
           <InlineInput
             multiline
-            keepOpen
             placeholder={t("taskTitle")}
-            onSubmit={(title) => void api.addTodo(column.id, title)}
+            // Open the new task in the side panel to fill in its details.
+            onSubmit={(title) => void api.addTodo(column.id, title).then((todo) => todo && onSelect(todo.id))}
             onCancel={() => setAdding(false)}
           />
         ) : (
@@ -360,8 +373,14 @@ function CardContent({ todo, done, now }: { todo: Todo; done: boolean; now: Date
   return (
     <>
       <div className={`board-card-title${done ? " done" : ""}`}>{todo.title}</div>
-      {(due || todo.notes) && (
+      {(due || todo.notes || todo.priority > 0) && (
         <div className="board-card-meta">
+          {todo.priority > 0 && (
+            <span className={`priority-chip p${todo.priority}`} title={t("priority")}>
+              <Flag size={12} />
+              {t(PRIORITY_LABELS[todo.priority])}
+            </span>
+          )}
           {due && (
             <span className={`due-chip${overdue ? " overdue" : ""}`} title={overdue ? t("overdue") : t("deadline")}>
               <CalendarIcon size={12} />

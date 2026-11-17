@@ -544,6 +544,14 @@ function todoPatch(body: any): TodoPatch | null {
     if (body.dueTime !== null && !isTime(body.dueTime)) return null;
     patch.dueTime = body.dueTime;
   }
+  if ("priority" in body) {
+    if (![0, 1, 2, 3].includes(body.priority)) return null;
+    patch.priority = body.priority;
+  }
+  if ("doneAt" in body) {
+    if (body.doneAt !== null && !isIso(body.doneAt)) return null;
+    patch.doneAt = body.doneAt && new Date(body.doneAt).toISOString();
+  }
   for (const key of ["calendarId", "eventId"] as const) {
     if (!(key in body)) continue;
     const value = idOrNull(body[key]);
@@ -597,6 +605,8 @@ app.post("/api/board/todos", requireOwner, async (c) => {
     dueTime: patch.dueDate ? (patch.dueTime ?? null) : null,
     calendarId: null,
     eventId: null,
+    priority: patch.priority ?? 0,
+    doneAt: patch.doneAt ?? null,
     createdAt: now,
     updatedAt: now,
   };

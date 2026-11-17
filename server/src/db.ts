@@ -75,6 +75,10 @@ export interface Todo {
   /** The Google event that shows the deadline on the calendar. */
   calendarId: string | null;
   eventId: string | null;
+  /** 0 none, 1 low, 2 medium, 3 high. */
+  priority: number;
+  /** When the task reached the done column; done tasks can be hidden after a while. */
+  doneAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -89,6 +93,8 @@ interface TodoRow {
   due_time: string | null;
   calendar_id: string | null;
   event_id: string | null;
+  priority: number;
+  done_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -103,6 +109,8 @@ const TODO_FIELDS = {
   dueTime: "due_time",
   calendarId: "calendar_id",
   eventId: "event_id",
+  priority: "priority",
+  doneAt: "done_at",
 } as const;
 export type TodoPatch = Partial<Pick<Todo, keyof typeof TODO_FIELDS>>;
 
@@ -158,6 +166,10 @@ export function openStore(dataDir: string) {
     );
     CREATE INDEX IF NOT EXISTS todos_column ON todos(column_id);
   `);
+  // Columns added after the todos table first shipped (0.1.14).
+  const todoColumns = new Set((db.prepare("PRAGMA table_info(todos)").all() as { name: string }[]).map((c) => c.name));
+  if (!todoColumns.has("priority")) db.exec("ALTER TABLE todos ADD COLUMN priority INTEGER NOT NULL DEFAULT 0");
+  if (!todoColumns.has("done_at")) db.exec("ALTER TABLE todos ADD COLUMN done_at TEXT");
 
   const toLink = (r: LinkRow): Link => ({
     id: r.id,
@@ -193,6 +205,8 @@ export function openStore(dataDir: string) {
     dueTime: r.due_time,
     calendarId: r.calendar_id,
     eventId: r.event_id,
+    priority: r.priority,
+    doneAt: r.done_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   });
@@ -286,9 +300,9 @@ export function openStore(dataDir: string) {
     },
     addTodo(t: Todo) {
       db.prepare(
-        `INSERT INTO todos (id, column_id, title, notes, position, due_date, due_time, calendar_id, event_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(t.id, t.columnId, t.title, t.notes, t.position, t.dueDate, t.dueTime, t.calendarId, t.eventId, t.createdAt, t.updatedAt);
+        `INSERT INTO todos (id, column_id, title, notes, position, due_date, due_time, calendar_id, event_id, priority, done_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(t.id, t.columnId, t.title, t.notes, t.position, t.dueDate, t.dueTime, t.calendarId, t.eventId, t.priority, t.doneAt, t.createdAt, t.updatedAt);
     },
     updateTodo(id: string, patch: TodoPatch) {
       const entries = (Object.keys(TODO_FIELDS) as (keyof typeof TODO_FIELDS)[]).flatMap((k) =>

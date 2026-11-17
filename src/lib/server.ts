@@ -142,11 +142,19 @@ export interface Todo {
   /** The Google event showing the deadline. */
   calendarId: string | null;
   eventId: string | null;
+  /** 0 none, 1 low, 2 medium, 3 high. */
+  priority: Priority;
+  /** When it reached the done column. */
+  doneAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export type TodoPatch = Partial<Pick<Todo, "columnId" | "title" | "notes" | "position" | "dueDate" | "dueTime" | "calendarId" | "eventId">>;
+export type Priority = 0 | 1 | 2 | 3;
+
+export type TodoPatch = Partial<
+  Pick<Todo, "columnId" | "title" | "notes" | "position" | "dueDate" | "dueTime" | "calendarId" | "eventId" | "priority" | "doneAt">
+>;
 
 const json = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
 const enc = encodeURIComponent;
@@ -189,7 +197,7 @@ function demoBoard(path: string, init: RequestInit): unknown {
     return { todos };
   }
   if (method === "POST") {
-    const todo: Todo = { id: crypto.randomUUID(), notes: "", dueDate: null, dueTime: null, calendarId: null, eventId: null, createdAt: now, updatedAt: now, ...body };
+    const todo: Todo = { id: crypto.randomUUID(), notes: "", dueDate: null, dueTime: null, calendarId: null, eventId: null, priority: 0, doneAt: null, createdAt: now, updatedAt: now, ...body };
     demo.todos.push(todo);
     return todo;
   }

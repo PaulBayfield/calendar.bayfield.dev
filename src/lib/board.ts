@@ -8,9 +8,17 @@ import * as api from "./server";
 import type { Todo, TodoColumn, TodoPatch } from "./server";
 import { deleteEventById, eventTimes, saveEventById, type CalEvent, type Calendar, type EventInput } from "./google";
 import { addDays, addMinutes, fromDateAndTime, parseDateOnly, toDateOnly, toTimeOnly } from "./dates";
-import type { Translate } from "./i18n";
+import type { StringKey, Translate } from "./i18n";
 
 export type { Todo, TodoColumn };
+export type { Priority } from "./server";
+
+export const PRIORITY_LABELS: Record<api.Priority, StringKey> = {
+  0: "priorityNone",
+  1: "priorityLow",
+  2: "priorityMedium",
+  3: "priorityHigh",
+};
 
 export interface Board {
   columns: TodoColumn[];
@@ -42,6 +50,14 @@ export function isDone(board: Board, todo: Todo): boolean {
 export function dueAt(todo: Todo): Date | null {
   if (!todo.dueDate) return null;
   return todo.dueTime ? fromDateAndTime(todo.dueDate, todo.dueTime) : parseDateOnly(todo.dueDate);
+}
+
+/** A done task that has sat in the done column longer than `days` (0: never hidden). */
+export function isStale(todo: Todo, done: boolean, days: number, now: Date): boolean {
+  if (!done || !days) return false;
+  // Tasks done before 0.1.16 have no doneAt; their last change is close enough.
+  const since = Date.parse(todo.doneAt ?? todo.updatedAt);
+  return now.getTime() - since > days * 86_400_000;
 }
 
 export function isOverdue(todo: Todo, done: boolean, now: Date): boolean {
@@ -183,11 +199,17 @@ export function useBoard(options: Options) {
     if (ev.event.id !== todo.eventId || calendar.id !== todo.calendarId) await setLink(id, calendar.id, ev.event.id);
   };
 
-  /** Column changes can change which tasks count as done; update their events' ✓. */
+  /** Column changes can change which tasks count as done: update their done time and their events' ✓. */
   const resyncDone = (before: Board, after: Board) => {
     for (const todo of after.todos) {
       const old = before.todos.find((x) => x.id === todo.id);
-      if (todo.dueDate && old && isDone(before, old) !== isDone(after, todo)) run(todo.id, () => syncEvent(todo.id));
+      if (!old || isDone(before, old) === isDone(after, todo)) continue;
+      const doneAt = isDone(after, todo) ? new Date().toISOString() : null;
+      setBoard((b) => ({ ...b, todos: b.todos.map((x) => (x.id === todo.id ? { ...x, doneAt } : x)) }));
+      run(todo.id, async () => {
+        await api.updateTodo(base, todo.id, { doneAt });
+        if (todo.dueDate) await syncEvent(todo.id);
+      });
     }
   };
 
@@ -197,8 +219,14 @@ export function useBoard(options: Options) {
     const b = boardRef.current;
     if (!b || !title.trim()) return null;
     const last = lastOf(byPosition(b.todos.filter((x) => x.columnId === columnId)));
+    const doneColumn = lastOf(byPosition(b.columns))?.id === columnId && b.columns.length > 1;
     try {
-      const todo = await api.createTodo(base, { columnId, title: title.trim(), position: positionBetween(last?.position) });
+      const todo = await api.createTodo(base, {
+        columnId,
+        title: title.trim(),
+        position: positionBetween(last?.position),
+        doneAt: doneColumn ? new Date().toISOString() : null,
+      });
       setBoard((b) => ({ ...b, todos: [...b.todos, todo] }));
       return todo;
     } catch (e) {
@@ -211,12 +239,17 @@ export function useBoard(options: Options) {
     const before = boardRef.current;
     const old = before?.todos.find((x) => x.id === id);
     if (!before || !old) return;
-    const full: TodoPatch = patch.dueDate === null ? { ...patch, dueTime: null } : patch;
+    const full: TodoPatch = patch.dueDate === null ? { ...patch, dueTime: null } : { ...patch };
     setBoard((b) => ({ ...b, todos: b.todos.map((x) => (x.id === id ? { ...x, ...full } : x)) }));
     const after = boardRef.current!;
     const changed = after.todos.find((x) => x.id === id)!;
-    const touchesEvent =
-      ["title", "notes", "dueDate", "dueTime"].some((k) => k in full) || isDone(before, old) !== isDone(after, changed);
+    const doneChanged = isDone(before, old) !== isDone(after, changed);
+    if (doneChanged) {
+      // Note when it was done, so it can be hidden after a while.
+      full.doneAt = isDone(after, changed) ? new Date().toISOString() : null;
+      setBoard((b) => ({ ...b, todos: b.todos.map((x) => (x.id === id ? { ...x, doneAt: full.doneAt! } : x)) }));
+    }
+    const touchesEvent = ["title", "notes", "dueDate", "dueTime"].some((k) => k in full) || doneChanged;
     run(id, async () => {
       await api.updateTodo(base, id, full);
       if (touchesEvent) await syncEvent(id);

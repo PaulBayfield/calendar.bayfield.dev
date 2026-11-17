@@ -37,6 +37,8 @@ export interface Settings {
   weatherCity: string;
   /** A new version the user chose not to be told about again. */
   skippedUpdate: string;
+  /** Done tasks leave the board after this many days in the done column; 0 keeps them. */
+  hideDoneAfter: number;
 }
 
 const STORAGE_KEY = "calendar.settings";
@@ -60,6 +62,7 @@ const DEFAULTS: Settings = {
   notifications: true,
   closeToTray: true,
   skippedUpdate: "",
+  hideDoneAfter: 7,
   weather: false,
   weatherCity: "",
 };

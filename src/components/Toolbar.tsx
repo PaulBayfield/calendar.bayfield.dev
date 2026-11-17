@@ -65,7 +65,7 @@ export function Toolbar(p: Props) {
   );
 }
 
-function PrivacyToggle() {
+export function PrivacyToggle() {
   const { t, settings, update } = useSettings();
   return (
     <button
