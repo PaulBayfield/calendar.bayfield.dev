@@ -1,4 +1,4 @@
-// Daily weather for one city, from the datawarehouse via the calendar server (which holds the API key).
+// Daily weather for one city, from Dash's weather module via the calendar server (which holds the API token).
 
 import { useEffect, useMemo, useState } from "react";
 import { getWeather, serverBase, type WeatherCity, type WeatherCurrent, type WeatherDay } from "./server";
