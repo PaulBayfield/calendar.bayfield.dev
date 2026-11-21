@@ -188,7 +188,8 @@ export async function disconnectPrefs(): Promise<void> {
 let reconnect: () => void = () => {};
 let stopEvents: () => void = () => {};
 
-const same = (a: unknown, b: unknown) => a === b;
+/** By value: lists and objects (custom themes) come back as new objects from storage and the server. */
+const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * Keeps the app's shared settings in step with prefs.bayfield.dev. Call once, at the top of the
