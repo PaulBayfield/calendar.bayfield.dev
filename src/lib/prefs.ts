@@ -14,9 +14,72 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 
 export const PREFS_URL: string = (import.meta.env.VITE_PREFS_URL as string | undefined) ?? "https://prefs.bayfield.dev";
 
+// ---------- Custom themes ----------
+//
+// Made on prefs.bayfield.dev: a built-in theme (its base) with some of its colours replaced. One
+// is in use when `customTheme` is its id and `theme` is still its base (choosing another theme
+// anywhere takes it off). The same tables and function as prefs.bayfield.dev's public/assets/app.js.
+
+export type ThemeBase = "light" | "dark" | "rosepine" | "rosepine-dawn";
+export const THEME_COLORS = ["bg", "bg-sidebar", "bg-elevated", "bg-input", "text", "text-muted", "border-strong", "primary", "accent", "brand"] as const;
+export type ThemeColor = (typeof THEME_COLORS)[number];
+
+export interface CustomTheme {
+  id: string;
+  name: string;
+  base: ThemeBase;
+  /** Only the colours that differ from the base ("#rrggbb"). */
+  colors: Partial<Record<ThemeColor, string>>;
+}
+
+/** The built-in themes' values for those colours (for previews). */
+export const BASE_COLORS: Record<ThemeBase, Record<ThemeColor, string>> = {
+  light: { bg: "#ffffff", "bg-sidebar": "#f8f8f7", "bg-elevated": "#ffffff", "bg-input": "#f1f1ef", text: "#37352f", "text-muted": "#787774", "border-strong": "#e3e2e0", primary: "#2383e2", accent: "#eb5757", brand: "#2f9e74" },
+  dark: { bg: "#191919", "bg-sidebar": "#202020", "bg-elevated": "#252525", "bg-input": "#2a2a2a", text: "#e9e9e7", "text-muted": "#9b9a97", "border-strong": "#343434", primary: "#2383e2", accent: "#eb5757", brand: "#3fb68b" },
+  rosepine: { bg: "#191724", "bg-sidebar": "#1f1d2e", "bg-elevated": "#26233a", "bg-input": "#26233a", text: "#e0def4", "text-muted": "#908caa", "border-strong": "#403d52", primary: "#c4a7e7", accent: "#eb6f92", brand: "#9ccfd8" },
+  "rosepine-dawn": { bg: "#faf4ed", "bg-sidebar": "#fffaf3", "bg-elevated": "#fffaf3", "bg-input": "#f2e9e1", text: "#575279", "text-muted": "#797593", "border-strong": "#dfdad9", primary: "#907aa9", accent: "#b4637a", brand: "#56949f" },
+};
+
+/** The custom theme in use, if any. */
+export function activeCustomTheme(p: { theme?: string; customTheme?: string; customThemes?: CustomTheme[] }): CustomTheme | null {
+  const theme = p.customThemes?.find((x) => x.id === p.customTheme);
+  return theme && theme.base === p.theme ? theme : null;
+}
+
+/** Black or white, whichever reads better on `hex`. */
+function onColor(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? "#111111" : "#ffffff";
+}
+
+/** The CSS variables a custom theme sets over its base: its colours, and the ones made from them. */
+export function themeVars(theme: CustomTheme): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const c = theme.colors;
+  for (const k of THEME_COLORS) if (c[k]) vars[`--${k}`] = c[k];
+  const has = (...keys: ThemeColor[]) => keys.some((k) => c[k]);
+  if (has("bg", "text")) {
+    vars["--bg-subtle"] = "color-mix(in srgb, var(--bg) 97%, var(--text))";
+    vars["--hover"] = "color-mix(in srgb, var(--text) 7%, transparent)";
+    vars["--active"] = "color-mix(in srgb, var(--text) 11%, transparent)";
+  }
+  if (has("bg", "text-muted")) vars["--text-faint"] = "color-mix(in srgb, var(--text-muted) 62%, var(--bg))";
+  if (has("bg", "border-strong")) vars["--border"] = "color-mix(in srgb, var(--border-strong) 55%, var(--bg))";
+  if (c.primary) vars["--on-primary"] = onColor(c.primary);
+  if (c.accent) vars["--on-accent"] = onColor(c.accent);
+  if (c.brand) vars["--seq"] = c.brand;
+  if (has("bg-input")) vars["--seq-empty"] = "var(--bg-input)";
+  return vars;
+}
+
 /** The shared preferences (as in prefs.bayfield.dev's server/src/catalog.ts). */
 export interface SharedPrefs {
   theme: "system" | "light" | "dark" | "rosepine" | "rosepine-dawn";
+  customThemes: CustomTheme[];
+  customTheme: string;
   language: "auto" | "en" | "fr";
   timeFormat: "auto" | "24h" | "12h";
   durationStyle: "long" | "short" | "decimal";

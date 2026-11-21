@@ -1749,6 +1749,23 @@ textarea:disabled {
 .theme-preview.rosepine-dawn span:nth-child(3) {
   background: #d7827e;
 }
+.theme-card-name {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.theme-manage {
+  margin-top: 10px;
+}
+.theme-manage .link-button {
+  color: var(--primary);
+  font-size: 12px;
+  vertical-align: bottom;
+}
+.theme-manage .link-button:hover {
+  text-decoration: underline;
+}
 .theme-preview.system {
   background: linear-gradient(135deg, #fff 50%, #191919 50%);
 }

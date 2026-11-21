@@ -10,8 +10,8 @@ import { notificationPermission, type NotificationPermission } from "../lib/remi
 import { APP_VERSION, canInstallUpdates, installStatus, RELEASES_URL, useInstallUpdate, useUpdateCheck } from "../lib/updates";
 import { useWeatherData } from "../lib/weather";
 import { ShortcutList } from "./Shortcuts";
-import { connectPrefs, disconnectPrefs, usePrefsStatus } from "../lib/prefs";
-import { Bell, Globe, Info, Keyboard, Sliders, X } from "./icons";
+import { activeCustomTheme, BASE_COLORS, connectPrefs, disconnectPrefs, PREFS_URL, usePrefsStatus } from "../lib/prefs";
+import { Bell, External, Globe, Info, Keyboard, Sliders, X } from "./icons";
 
 const THEMES: { id: Theme; label: StringKey }[] = [
   { id: "system", label: "themeSystem" },
@@ -134,6 +134,7 @@ function PrefsSyncRow() {
 
 function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
   const { t, settings, update } = useSettings();
+  const custom = activeCustomTheme(settings);
 
   const select = <K extends keyof Settings>(key: K, options: [Settings[K], string][]) => (
     <select
@@ -155,7 +156,7 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
         <h3>{t("appearance")}</h3>
         <div className="theme-picker">
           {THEMES.map(({ id, label }) => (
-            <button key={id} className={`theme-card${settings.theme === id ? " active" : ""}`} onClick={() => update({ theme: id })}>
+            <button key={id} className={`theme-card${!custom && settings.theme === id ? " active" : ""}`} onClick={() => update({ theme: id, customTheme: "" })}>
               <span className={`theme-preview ${id}`}>
                 <span />
                 <span />
@@ -164,7 +165,32 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
               {t(label)}
             </button>
           ))}
+          {settings.customThemes.map((theme) => {
+            const c = { ...BASE_COLORS[theme.base], ...theme.colors };
+            return (
+              <button
+                key={theme.id}
+                className={`theme-card${custom?.id === theme.id ? " active" : ""}`}
+                title={theme.name}
+                onClick={() => update({ theme: theme.base, customTheme: theme.id })}
+              >
+                <span className="theme-preview" style={{ background: c.bg, borderColor: c["border-strong"] }}>
+                  <span style={{ background: c["bg-sidebar"] }} />
+                  <span style={{ background: c.primary }} />
+                  <span style={{ background: c.accent }} />
+                </span>
+                <span className="theme-card-name">{theme.name}</span>
+              </button>
+            );
+          })}
         </div>
+        <p className="settings-hint theme-manage">
+          {t("manageThemesHint")}{" "}
+          <button className="link-button with-icon" onClick={() => openExternal(PREFS_URL)}>
+            {t("manageThemes")}
+            <External size={13} />
+          </button>
+        </p>
       </section>
       <section className="settings-rows">
         <Row label={t("language")}>

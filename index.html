@@ -12,6 +12,8 @@
         var t = JSON.parse(localStorage.getItem("calendar.settings") || "{}").theme || "system";
         document.documentElement.dataset.theme =
           t === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : t;
+        var v = JSON.parse(localStorage.getItem("calendar.themeVars") || "{}");
+        for (var k in v) document.documentElement.style.setProperty(k, v[k]);
         if (JSON.parse(localStorage.getItem("calendar.settings") || "{}").privacy)
           document.documentElement.setAttribute("data-privacy", "");
       } catch (e) {}
