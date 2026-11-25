@@ -162,7 +162,7 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
                 <span />
                 <span />
               </span>
-              {t(label)}
+              <span className="theme-card-name">{t(label)}</span>
             </button>
           ))}
           {settings.customThemes.map((theme) => {

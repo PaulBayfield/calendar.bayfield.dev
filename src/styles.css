@@ -1667,14 +1667,16 @@ textarea:disabled {
 }
 .theme-picker {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
   gap: 10px;
 }
 .theme-card {
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   gap: 6px;
   align-items: center;
+  min-width: 0;
   font-size: 13px;
   padding: 6px;
   border-radius: 10px;
@@ -1751,9 +1753,14 @@ textarea:disabled {
 }
 .theme-card-name {
   max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.3;
 }
 .theme-manage {
   margin-top: 10px;
@@ -2339,7 +2346,7 @@ textarea:disabled {
     padding: 16px;
   }
   .theme-picker {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   }
   .settings-modal {
     grid-template-columns: 1fr;
