@@ -184,9 +184,9 @@ function PreferencesPage({ calendars }: { calendars: Calendar[] }) {
             );
           })}
         </div>
-        <p className="settings-hint theme-manage">
+        <p className="theme-manage">
           {t("manageThemesHint")}{" "}
-          <button className="link-button with-icon" onClick={() => openExternal(PREFS_URL)}>
+          <button className="theme-manage-link" onClick={() => void openExternal(PREFS_URL)}>
             {t("manageThemes")}
             <External size={13} />
           </button>
